@@ -1,0 +1,1210 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RutaMax</title>
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<script type="module">
+import{initializeApp}from'https://www.gstatic.com/firebasejs/10.11.0/firebase-app.js';
+import{getFirestore,collection,addDoc,getDocs,deleteDoc,doc,query,orderBy}from'https://www.gstatic.com/firebasejs/10.11.0/firebase-firestore.js';
+const fbCfg={apiKey:"AIzaSyCkYZSQ1rkZByRgl6JEnhuVd1EBtWuDUDw",authDomain:"rutamax-e27ef.firebaseapp.com",projectId:"rutamax-e27ef",storageBucket:"rutamax-e27ef.firebasestorage.app",messagingSenderId:"506964976631",appId:"1:506964976631:web:3e35fd4a8cf8fdb2fbc4f2"};
+const app=initializeApp(fbCfg);
+const db=getFirestore(app);
+window.fbSaveRoute=async(name,route)=>{await addDoc(collection(db,'recorridos'),{name,date:new Date().toLocaleDateString('es-AR'),timestamp:Date.now(),route:JSON.stringify(route)});};
+window.fbGetRoutes=async()=>{const q=query(collection(db,'recorridos'),orderBy('timestamp','desc'));const snap=await getDocs(q);return snap.docs.map(d=>({id:d.id,...d.data(),route:JSON.parse(d.data().route)}));};
+window.fbDeleteRoute=async(id)=>{await deleteDoc(doc(db,'recorridos',id));};
+window.fbReady=true;
+window.addEventListener('load',()=>setTimeout(()=>{if(typeof renderSaved==='function')renderSaved();},1500));
+</script>
+<style>
+:root{--bg:#0a0f1e;--sur:#111827;--sur2:#1a2235;--bor:#1f2d45;--acc:#00d4ff;--grn:#10b981;--yel:#f59e0b;--red:#ef4444;--txt:#e2e8f0;--mut:#64748b;}
+*{box-sizing:border-box;margin:0;padding:0;}
+body{background:var(--bg);color:var(--txt);font-family:'DM Sans',sans-serif;min-height:100vh;}
+header{padding:14px 20px;display:flex;align-items:center;border-bottom:1px solid var(--bor);}
+.logo{font-family:'Syne',sans-serif;font-size:20px;font-weight:800;}.logo b{color:var(--acc);}
+.con{max-width:760px;margin:0 auto;padding:20px 14px;}
+
+.key-card{background:linear-gradient(135deg,rgba(0,212,255,.08),rgba(124,58,237,.06));border:1px solid var(--acc);border-radius:14px;padding:18px 20px;margin-bottom:18px;}
+.key-card-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.key-dot{width:10px;height:10px;border-radius:50%;background:var(--mut);flex-shrink:0;}
+.key-dot.on{background:var(--grn);box-shadow:0 0 8px var(--grn);}
+.key-title{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;flex:1;}
+.key-row{display:flex;gap:8px;}
+.key-inp{flex:1;background:var(--bg);border:1px solid var(--bor);border-radius:10px;padding:11px 14px;color:var(--txt);font-size:13px;font-family:monospace;outline:none;transition:border-color .2s;}
+.key-inp:focus{border-color:var(--acc);}
+.key-inp::placeholder{color:var(--mut);font-size:12px;}
+.key-btn{background:var(--acc);color:#000;border:none;border-radius:10px;padding:11px 18px;font-family:'Syne',sans-serif;font-size:13px;font-weight:800;cursor:pointer;white-space:nowrap;}
+.key-note{font-size:11px;color:var(--mut);margin-top:8px;line-height:1.5;}
+.key-note a{color:var(--acc);text-decoration:none;}
+.key-err{font-size:12px;color:var(--red);margin-top:6px;display:none;}
+
+.card{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:16px 18px;margin-bottom:14px;}
+.lbl{font-family:'Syne',sans-serif;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:1.5px;color:var(--mut);margin-bottom:10px;}
+.inp{width:100%;background:var(--bg);border:1px solid var(--bor);border-radius:10px;padding:12px 14px;color:var(--txt);font-size:15px;font-family:'DM Sans',sans-serif;outline:none;transition:border-color .2s;}
+.inp:focus{border-color:var(--acc);}
+.inp::placeholder{color:var(--mut);}
+.inp-hint{font-size:11px;color:var(--mut);margin-top:6px;}
+.row{display:flex;gap:8px;align-items:center;}
+
+.dlist{display:flex;flex-direction:column;gap:10px;margin-bottom:12px;}
+.ditem{background:var(--bg);border:1px solid var(--bor);border-radius:10px;padding:12px 14px;animation:ap .2s ease;}
+@keyframes ap{from{opacity:0;transform:translateY(-5px);}to{opacity:1;transform:translateY(0);}}
+.dtop{display:flex;align-items:center;gap:8px;margin-bottom:6px;}
+.dnum{width:28px;height:28px;background:var(--sur2);border-radius:50%;display:flex;align-items:center;justify-content:center;font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--acc);flex-shrink:0;}
+.dinp{background:none;border:none;color:var(--txt);font-family:'DM Sans',sans-serif;font-size:15px;outline:none;width:100%;}
+.dinp::placeholder{color:var(--mut);}
+.xbtn{background:none;border:none;color:var(--mut);cursor:pointer;font-size:18px;flex-shrink:0;padding:0 4px;}
+.xbtn:hover{color:var(--red);}
+.dbot{display:flex;gap:8px;flex-wrap:wrap;align-items:center;padding-left:36px;margin-top:6px;}
+.sel,.tinp{background:var(--sur2);border:1px solid var(--bor);border-radius:6px;padding:5px 8px;color:var(--txt);font-size:12px;outline:none;font-family:'DM Sans',sans-serif;}
+.tinp{width:84px;color:var(--mut);}
+.mlbl{font-size:11px;color:var(--mut);}
+.hours-auto{font-size:11px;color:var(--grn);margin-left:4px;}
+.hours-loading{font-size:11px;color:var(--mut);margin-left:4px;font-style:italic;}
+
+.pac-container{background:#13192b!important;border:1px solid var(--bor)!important;border-radius:10px!important;margin-top:4px!important;box-shadow:0 8px 30px rgba(0,0,0,.6)!important;font-family:'DM Sans',sans-serif!important;}
+.pac-item{padding:9px 14px!important;border-top:1px solid var(--bor)!important;color:var(--txt)!important;cursor:pointer!important;font-size:13px!important;}
+.pac-item:hover{background:rgba(0,212,255,.08)!important;}
+.pac-item-query{color:var(--acc)!important;}
+.pac-icon{display:none!important;}
+
+.ogrid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px;}
+.chip{background:var(--bg);border:1px solid var(--bor);border-radius:10px;padding:10px 12px;cursor:pointer;transition:all .2s;display:flex;align-items:center;gap:7px;font-size:13px;color:var(--mut);}
+.chip.on{background:rgba(0,212,255,.08);border-color:var(--acc);color:var(--acc);}
+
+.btnp{background:linear-gradient(135deg,var(--acc),#09f);color:#000;border:none;width:100%;font-size:16px;padding:15px;border-radius:12px;font-family:'Syne',sans-serif;font-weight:800;cursor:pointer;transition:all .2s;}
+.btnp:hover{transform:translateY(-1px);}
+.btnp:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+.btns{background:var(--sur2);color:var(--txt);border:1px solid var(--bor);border-radius:10px;padding:10px 16px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.btns:hover{border-color:var(--acc);color:var(--acc);}
+.btng{background:none;border:1px dashed var(--bor);color:var(--mut);width:100%;padding:10px;border-radius:10px;font-size:13px;cursor:pointer;transition:all .2s;font-family:'DM Sans',sans-serif;}
+.btng:hover{border-color:var(--acc);color:var(--acc);}
+
+.progress{margin-top:14px;display:none;}
+.pb-bg{background:var(--sur2);border-radius:99px;height:6px;overflow:hidden;margin-bottom:8px;}
+.pb{background:linear-gradient(90deg,var(--acc),#09f);height:100%;border-radius:99px;transition:width .3s;width:0%;}
+.ptxt{font-size:13px;color:var(--mut);text-align:center;}
+.errmsg{background:rgba(239,68,68,.1);border:1px solid rgba(239,68,68,.25);border-radius:10px;padding:12px 14px;font-size:13px;color:#fca5a5;margin-top:12px;display:none;line-height:1.5;}
+
+.saved-card{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:16px 18px;margin-bottom:14px;display:none;}
+.saved-list{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.saved-item{display:flex;align-items:center;gap:10px;background:var(--bg);border:1px solid var(--bor);border-radius:10px;padding:10px 14px;flex-wrap:wrap;}
+.saved-item-name{flex:1;font-size:13px;min-width:100px;}
+.saved-item-date{font-size:11px;color:var(--mut);}
+.saved-item-btns{display:flex;gap:6px;}
+.sbtn{background:none;border:1px solid var(--bor);border-radius:7px;padding:4px 10px;color:var(--mut);font-size:11px;cursor:pointer;font-family:'DM Sans',sans-serif;}
+.sbtn:hover{border-color:var(--acc);color:var(--acc);}
+.sbtn.del:hover{border-color:var(--red);color:var(--red);}
+
+.div{height:1px;background:var(--bor);margin:20px 0;display:none;}
+#res{display:none;}
+.rhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:8px;}
+.rtit{font-family:'Syne',sans-serif;font-size:18px;font-weight:800;}
+.rhead-btns{display:flex;gap:8px;flex-wrap:wrap;}
+.sgrid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:18px;}
+.sc{background:var(--sur);border:1px solid var(--bor);border-radius:12px;padding:13px 14px;}
+.sv{font-family:'Syne',sans-serif;font-size:22px;font-weight:800;color:var(--acc);line-height:1;margin-bottom:3px;}
+.slb{font-size:11px;color:var(--mut);text-transform:uppercase;letter-spacing:.6px;}
+.rlist{display:flex;flex-direction:column;gap:8px;margin-bottom:18px;}
+.drag-hint{font-size:11px;color:var(--mut);text-align:center;margin-bottom:6px;font-style:italic;}
+/* HORA DE SALIDA */
+.salida-bar{background:var(--sur);border:1px solid var(--acc);border-radius:12px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.salida-lbl{font-family:'Syne',sans-serif;font-size:12px;font-weight:700;color:var(--acc);white-space:nowrap;}
+.salida-inp{background:var(--bg);border:1px solid var(--bor);border-radius:8px;padding:8px 12px;color:var(--txt);font-size:14px;outline:none;font-family:'DM Sans',sans-serif;}
+.salida-inp:focus{border-color:var(--acc);}
+.salida-note{font-size:11px;color:var(--mut);}
+/* INSERTAR NOCHE */
+.insert-noche-btn{display:flex;align-items:center;justify-content:center;gap:6px;background:none;border:1px dashed #7c3aed;border-radius:8px;color:#a78bfa;font-size:11px;cursor:pointer;padding:5px 12px;font-family:'DM Sans',sans-serif;transition:all .2s;white-space:nowrap;}
+.insert-noche-btn:hover{background:rgba(124,58,237,.1);border-color:#a78bfa;}
+.insert-almuerzo-btn{display:flex;align-items:center;justify-content:center;gap:6px;background:none;border:1px dashed var(--yel);border-radius:8px;color:var(--yel);font-size:11px;cursor:pointer;padding:5px 12px;font-family:'DM Sans',sans-serif;transition:all .2s;white-space:nowrap;}
+.insert-almuerzo-btn:hover{background:rgba(245,158,11,.1);border-color:var(--yel);}
+.btns-between{display:flex;gap:8px;justify-content:center;margin:4px 0;}
+/* ALMUERZO STOP */
+.almuerzo-stop{background:rgba(245,158,11,.05);border:2px solid var(--yel)!important;}
+.almuerzo-stop .sdot{background:rgba(245,158,11,.2);border-color:var(--yel);font-size:16px;}
+.noche-stop{background:rgba(124,58,237,.08);border:2px solid #7c3aed!important;}
+.noche-stop .sdot{background:rgba(124,58,237,.25);border-color:#7c3aed;font-size:14px;}
+.noche-salida{display:flex;align-items:center;gap:8px;margin-top:6px;flex-wrap:wrap;}
+.noche-salida-lbl{font-size:11px;color:#a78bfa;}
+.noche-salida-inp{background:var(--bg);border:1px solid #7c3aed;border-radius:6px;padding:4px 8px;color:var(--txt);font-size:12px;outline:none;width:84px;}
+.rstop{cursor:default;}
+.rstop.dragging{opacity:.4;border:2px dashed var(--acc)!important;}
+.rstop.drag-over{border-top:3px solid var(--acc)!important;}
+.drag-handle{color:var(--mut);font-size:16px;cursor:grab;padding:0 6px 0 0;flex-shrink:0;user-select:none;}
+.drag-handle:active{cursor:grabbing;}
+.rstop{display:flex;align-items:flex-start;gap:12px;padding:13px 14px;background:var(--sur);border:1px solid var(--bor);border-radius:12px;position:relative;}
+.rstop:hover{border-color:var(--acc);}
+.rstop.alert-closed{border-color:var(--red)!important;background:rgba(239,68,68,.05);}
+.rstop.alert-closing{border-color:var(--yel)!important;background:rgba(245,158,11,.05);}
+.sdot{width:38px;height:38px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0;border:2px solid;}
+.sdot.or{background:rgba(16,185,129,.15);border-color:var(--grn);}
+.sdot.st{background:rgba(0,212,255,.1);border-color:rgba(0,212,255,.4);font-family:'Syne',sans-serif;font-size:13px;font-weight:800;color:var(--acc);}
+.sdot.fi{background:rgba(124,58,237,.15);border-color:#7c3aed;}
+.sinf{flex:1;min-width:0;}
+.snm{font-weight:500;font-size:14px;margin-bottom:4px;word-break:break-word;}
+.smeta{display:flex;gap:10px;flex-wrap:wrap;}
+.stag{font-size:12px;color:var(--mut);}
+.stag.w{color:var(--yel);}
+.stag.ok{color:var(--grn);}
+.stag.err{color:var(--red);font-weight:600;}
+.leg{font-size:12px;color:var(--mut);margin-top:5px;}
+.stop-remove{position:absolute;top:8px;right:8px;background:none;border:none;color:var(--mut);cursor:pointer;font-size:16px;line-height:1;padding:2px 6px;border-radius:5px;}
+.stop-remove:hover{color:var(--red);background:rgba(239,68,68,.1);}
+
+.arow{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;}
+.bmaps,.bwaze{width:100%;font-size:14px;padding:13px;border-radius:12px;border:none;font-family:'Syne',sans-serif;font-weight:700;cursor:pointer;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:7px;color:#fff;}
+.bmaps{background:linear-gradient(135deg,#10b981,#059669);}
+.bmaps:hover{transform:translateY(-1px);}
+.bwaze{background:linear-gradient(135deg,#6366f1,#4f46e5);}
+.bwaze:hover{transform:translateY(-1px);}
+.tips{background:var(--sur);border:1px solid var(--bor);border-left:3px solid var(--yel);border-radius:12px;padding:14px 16px;}
+/* NOCHES Y HOTELES */
+.noches-card{background:var(--sur);border:1px solid var(--bor);border-radius:14px;padding:16px 18px;margin-bottom:16px;}
+.noches-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.noche-block{background:var(--bg);border:1px solid var(--bor);border-radius:12px;padding:14px;margin-bottom:10px;}
+.noche-titulo{font-family:'Syne',sans-serif;font-size:13px;font-weight:700;color:var(--acc);margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.noche-lugar{font-size:13px;color:var(--mut);margin-bottom:10px;}
+.hoteles-list{display:flex;flex-direction:column;gap:8px;}
+.hotel-item{background:var(--sur2);border:1px solid var(--bor);border-radius:10px;padding:10px 12px;display:flex;align-items:flex-start;gap:10px;}
+.hotel-stars{font-size:12px;color:var(--yel);}
+.hotel-info{flex:1;min-width:0;}
+.hotel-name{font-weight:500;font-size:13px;margin-bottom:2px;}
+.hotel-rating{font-size:12px;color:var(--grn);}
+.hotel-addr{font-size:11px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.hotel-link{background:var(--acc);color:#000;border:none;border-radius:7px;padding:5px 10px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;flex-shrink:0;font-family:'Syne',sans-serif;}
+.hotel-loading{font-size:12px;color:var(--mut);font-style:italic;padding:6px 0;}
+.noche-sep{display:flex;align-items:center;gap:10px;margin:14px 0 10px;}
+.noche-sep-line{flex:1;height:1px;background:var(--bor);}
+.noche-sep-txt{font-size:11px;color:var(--mut);white-space:nowrap;}
+.btn-noches{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border:none;border-radius:10px;padding:10px 16px;font-family:'Syne',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:16px;width:100%;justify-content:center;}
+.btn-noches:hover{opacity:.9;}
+.dias-selector{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.dia-chip{background:var(--bg);border:1px solid var(--bor);border-radius:8px;padding:7px 14px;cursor:pointer;font-size:13px;color:var(--mut);transition:all .2s;}
+.dia-chip.on{background:rgba(124,58,237,.15);border-color:#7c3aed;color:#a78bfa;font-weight:600;}
+.tlbl{font-family:'Syne',sans-serif;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--yel);margin-bottom:8px;}
+.tip{font-size:13px;color:var(--mut);padding:4px 0;display:flex;gap:7px;line-height:1.4;}
+.tip::before{content:'→';color:var(--yel);flex-shrink:0;}
+
+@media print{
+  header,.key-card,.card,.btng,.btnp,.btns,.bmaps,.bwaze,.tips,.stop-remove,.rhead-btns,.saved-card,.errmsg,.progress,.div{display:none!important;}
+  body{background:#fff;color:#000;}
+  .rstop{border:1px solid #ccc;margin-bottom:8px;page-break-inside:avoid;background:#fff!important;}
+  .rstop.alert-closed{border:2px solid #c00!important;}
+  .rstop.alert-closing{border:2px solid #b45309!important;}
+  .snm{color:#000;}
+  .stag{color:#555;}
+  .stag.err{color:#c00;}
+  .stag.w{color:#b45309;}
+  .stag.ok{color:#047857;}
+  .sv{color:#0077aa;}
+  .sc{border:1px solid #ccc;background:#f9f9f9;}
+  .slb,.leg{color:#555;}
+  #res{display:block!important;}
+  .print-header{display:block!important;}
+}
+.print-header{display:none;margin-bottom:20px;border-bottom:2px solid #000;padding-bottom:10px;}
+.print-header h2{font-size:20px;font-weight:700;margin-bottom:4px;color:#000;}
+.print-header p{font-size:13px;color:#555;}
+
+@media(max-width:500px){.sgrid{grid-template-columns:1fr 1fr;}.arow{grid-template-columns:1fr;}.key-row{flex-direction:column;}.key-btn{width:100%;}}
+</style>
+</head>
+<body>
+<header><div class="logo">Ruta<b>Max</b></div></header>
+<div class="con">
+
+  <div class="key-card" style="display:none">
+    <div class="key-card-top">
+      <div class="key-dot" id="key-dot"></div>
+      <div class="key-title" id="key-title">🔑 Conectar Google Maps</div>
+      <span style="font-size:12px;color:var(--mut)" id="key-status-txt"></span>
+    </div>
+    <div class="key-row">
+      <input class="key-inp" type="text" id="key-inp" placeholder="Pegá tu API Key: AIzaSy..." autocomplete="off">
+      <button class="key-btn" onclick="conectar()">Conectar</button>
+    </div>
+    <div class="key-err" id="key-err"></div>
+    <div class="key-note">Tu key: <a href="https://console.cloud.google.com/google/maps-apis/credentials" target="_blank">console.cloud.google.com → Credenciales</a></div>
+  </div>
+
+  <div class="saved-card" id="saved-card" style="display:block">
+    <div class="lbl">📂 Recorridos guardados</div>
+    <div class="saved-list" id="saved-list"></div>
+  </div>
+
+  <div class="card">
+    <div class="lbl">📍 Desde dónde salís</div>
+    <div class="row">
+      <input class="inp" id="inp-origin" type="text" placeholder="Ej: Gascón 1234, Buenos Aires" autocomplete="off">
+      <button class="btns" onclick="useLoc()">📡 Ubicación</button>
+    </div>
+    <div class="inp-hint" id="hint-origin">Con Google conectado podés escribir el nombre del negocio o la dirección.</div>
+  </div>
+
+  <div class="card">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;">
+      <div class="lbl" style="margin:0">🗺 A dónde vas</div>
+      <span id="dcnt" style="font-size:12px;color:var(--mut)"></span>
+    </div>
+    <div class="dlist" id="dlist"></div>
+    <button class="btng" onclick="addDest()">+ Agregar otro destino</button>
+  </div>
+
+  <div class="card">
+    <div class="lbl">⚙ Opciones</div>
+    <div class="ogrid">
+      <div class="chip on" onclick="tog(this,'dist')">📏 Menos distancia</div>
+      <div class="chip" onclick="tog(this,'traf')">🚦 Considerar tráfico</div>
+      <div class="chip" onclick="tog(this,'hora')">🕐 Respetar horarios</div>
+      <div class="chip" onclick="tog(this,'reg')">🔄 Volver al inicio</div>
+    </div>
+  </div>
+
+  <!-- VIAJE LARGO - DÍAS -->
+  <div class="card" id="dias-card" style="display:none">
+    <div class="lbl">🌙 Duración del viaje</div>
+    <div style="font-size:13px;color:var(--mut);margin-bottom:10px;">¿Cuántos días dura el recorrido? La app va a sugerir dónde hacer noche.</div>
+    <div class="dias-selector" id="dias-selector">
+      <div class="dia-chip" onclick="selDias(this,1)">1 día</div>
+      <div class="dia-chip on" onclick="selDias(this,2)">2 días</div>
+      <div class="dia-chip" onclick="selDias(this,3)">3 días</div>
+      <div class="dia-chip" onclick="selDias(this,4)">4 días</div>
+      <div class="dia-chip" onclick="selDias(this,5)">5 días</div>
+    </div>
+  </div>
+
+  <div style="display:flex;gap:8px;margin-bottom:4px;">
+    <button class="btnp" id="btn-calc" onclick="optimize()" style="flex:1">⚡ Calcular ruta óptima</button>
+    <button class="btns" id="btn-viaje-largo" onclick="toggleViajeLargo()" style="white-space:nowrap" title="Activar sugerencias de hotel para viaje de varios días">🌙 Viaje largo</button>
+  </div>
+  <div class="progress" id="progress">
+    <div class="pb-bg"><div class="pb" id="pb"></div></div>
+    <div class="ptxt" id="ptxt">Buscando direcciones...</div>
+  </div>
+  <div class="errmsg" id="errmsg"></div>
+  <div class="div" id="divider"></div>
+
+  <div id="res">
+    <div class="print-header" id="print-header">
+      <h2 id="print-title">Ruta optimizada</h2>
+      <p id="print-date"></p>
+    </div>
+    <div class="rhead">
+      <div class="rtit">✅ Ruta optimizada</div>
+      <div class="rhead-btns">
+        <button class="btns" style="font-size:12px;padding:7px 12px" onclick="editRoute()">✏️ Editar ruta</button>
+        <button class="btns" style="font-size:12px;padding:7px 12px" onclick="saveRoute()">💾 Guardar</button>
+        <button class="btns" style="font-size:12px;padding:7px 12px" onclick="printRoute()">🖨 Imprimir</button>
+        <button class="btns" style="font-size:12px;padding:7px 12px" onclick="resetV()">🔄 Nueva ruta</button>
+      </div>
+    </div>
+    <div class="sgrid" id="sgrid"></div>
+    <!-- HORA DE SALIDA -->
+    <div class="salida-bar">
+      <span class="salida-lbl">🕐 Hora de salida:</span>
+      <input class="salida-inp" type="time" id="hora-salida" value="08:00" onchange="recalcularHorarios()">
+      <span class="salida-note">Todos los horarios de llegada se calculan desde esta hora</span>
+    </div>
+    <div class="drag-hint">☰ Arrastrá las paradas · 🌙 Insertá una noche entre paradas</div>
+    <div class="rlist" id="rlist"></div>
+    <div class="arow">
+      <button class="bmaps" onclick="openMaps()">🗺 Google Maps</button>
+      <button class="bwaze" onclick="openWaze()">🚗 Waze</button>
+    </div>
+    <div class="tips" id="tips"></div>
+
+    <!-- SECCIÓN NOCHES -->
+    <div class="noches-card" id="noches-section" style="display:none">
+      <div class="noches-header">
+        <div class="lbl" style="margin:0">🌙 Dónde hacer noche</div>
+        <span id="noches-subtitle" style="font-size:12px;color:var(--mut)"></span>
+      </div>
+      <div id="noches-content"></div>
+    </div>
+
+  </div>
+
+</div>
+<script>
+let apiKey='',gmReady=false,geocoder=null,placesService=null;
+let uid=0,destinations=[],opts=new Set(['dist']),optimizedRoute=[];
+let gmAC={},selectedCoords={};
+
+// ── VIAJE LARGO ───────────────────────────────────────────────────────────────
+let viajeLargoActivo=false, diasViaje=2;
+
+function toggleViajeLargo(){
+  viajeLargoActivo=!viajeLargoActivo;
+  const btn=document.getElementById('btn-viaje-largo');
+  const card=document.getElementById('dias-card');
+  btn.style.background=viajeLargoActivo?'linear-gradient(135deg,#7c3aed,#6d28d9)':'';
+  btn.style.color=viajeLargoActivo?'#fff':'';
+  card.style.display=viajeLargoActivo?'block':'none';
+}
+
+function selDias(el,n){
+  diasViaje=n;
+  document.querySelectorAll('.dia-chip').forEach(c=>c.classList.remove('on'));
+  el.classList.add('on');
+}
+
+window.onload=()=>{
+  // API Key incorporada — no necesita configuración
+  const HARDCODED_KEY='AIzaSyDb0fY2CiUuuzzZTYrYS5YVe8D74AmOkC8';
+  document.getElementById('key-inp').value=HARDCODED_KEY;
+  apiKey=HARDCODED_KEY;
+  localStorage.setItem('rm_key',HARDCODED_KEY);
+  loadGM();
+  addDest();addDest();addDest();renderSaved();
+};
+
+// ── API KEY ───────────────────────────────────────────────────────────────────
+function conectar(){
+  const val=document.getElementById('key-inp').value.trim();
+  if(!val){showKeyErr('Pegá tu API Key primero.');return;}
+  if(!val.startsWith('AIza')){showKeyErr('La key debe empezar con AIzaSy...');return;}
+  apiKey=val;localStorage.setItem('rm_key',apiKey);hideKeyErr();setKeyStatus('connecting');loadGM();
+}
+function loadGM(){
+  const old=document.getElementById('gm-script');if(old)old.remove();
+  const s=document.createElement('script');s.id='gm-script';
+  s.src=`https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=onGMReady&language=es`;
+  s.async=true;s.defer=true;
+  s.onerror=()=>{setKeyStatus('error');showKeyErr('API Key inválida o sin permisos.');};
+  document.head.appendChild(s);
+}
+window.onGMReady=function(){
+  gmReady=true;
+  geocoder=new google.maps.Geocoder();
+  // PlacesService necesita un mapa o div — usamos un div invisible
+  const div=document.createElement('div');
+  placesService=new google.maps.places.PlacesService(div);
+  setKeyStatus('ok');
+  attachAC('inp-origin');
+  destinations.forEach(d=>{delete gmAC['inp-d'+d.id];attachAC('inp-d'+d.id);});
+  document.getElementById('hint-origin').textContent='✅ Google conectado — escribí el nombre del negocio o la dirección';
+};
+function setKeyStatus(s){
+  const dot=document.getElementById('key-dot'),txt=document.getElementById('key-status-txt'),title=document.getElementById('key-title');
+  if(s==='ok'){dot.className='key-dot on';txt.textContent='✅ Conectado';title.textContent='🔑 Google Maps conectado — horarios automáticos activos';}
+  else if(s==='connecting'){dot.className='key-dot';txt.textContent='Conectando...';}
+  else{dot.className='key-dot';txt.textContent='❌ Error';}
+}
+function showKeyErr(msg){const el=document.getElementById('key-err');el.textContent=msg;el.style.display='block';}
+function hideKeyErr(){document.getElementById('key-err').style.display='none';}
+
+// ── HORARIOS DESDE GOOGLE PLACES (soporta horario partido) ───────────────────
+function fetchHours(placeId, destId){
+  if(!placesService||!placeId)return;
+  const statusEl=document.getElementById('hours-status-'+destId);
+  if(statusEl){statusEl.textContent='Buscando horarios...';statusEl.className='hours-loading';}
+  placesService.getDetails({placeId:placeId,fields:['opening_hours']},(place,status)=>{
+    if(status!==google.maps.places.PlacesServiceStatus.OK||!place?.opening_hours){
+      if(statusEl){statusEl.textContent='Horarios no disponibles en Google';statusEl.className='hours-loading';}
+      return;
+    }
+    const d=destinations.find(x=>x.id===destId);
+    if(!d)return;
+    const fmt=t=>t?`${String(t.hours).padStart(2,'0')}:${String(t.minutes).padStart(2,'0')}`:'';
+    const today=new Date().getDay();
+    const periods=place.opening_hours.periods||[];
+    const todayPeriods=periods.filter(p=>p.open&&p.open.day===today);
+    if(todayPeriods.length===0){
+      d.openFrom='';d.openTo='';d.periods=[];d.hoursFromGoogle=true;
+      if(statusEl){statusEl.textContent='🔴 Cerrado hoy según Google';statusEl.className='hours-auto';}
+      return;
+    }
+    // Guardar todos los turnos para verificación precisa
+    d.periods=todayPeriods.map(p=>({
+      open:p.open?p.open.hours*60+p.open.minutes:0,
+      close:p.close?p.close.hours*60+p.close.minutes:1440
+    }));
+    d.hoursFromGoogle=true;
+    const firstOpen=fmt(todayPeriods[0].open);
+    const lastClose=todayPeriods[todayPeriods.length-1].close?fmt(todayPeriods[todayPeriods.length-1].close):'';
+    d.openFrom=firstOpen;d.openTo=lastClose;
+    const fromEl=document.getElementById('open-from-'+destId);
+    const toEl=document.getElementById('open-to-'+destId);
+    if(fromEl)fromEl.value=firstOpen;
+    if(toEl)toEl.value=lastClose;
+    let hoursText='';
+    if(todayPeriods.length>1){
+      hoursText='✅ Horario partido: '+todayPeriods.map(p=>`${fmt(p.open)}${p.close?' - '+fmt(p.close):''}`).join(' / ');
+    } else {
+      hoursText=`✅ Horarios de Google: ${firstOpen}${lastClose?' - '+lastClose:''}`;
+    }
+    if(statusEl){statusEl.textContent=hoursText;statusEl.className='hours-auto';}
+  });
+}
+
+// ── AUTOCOMPLETE ──────────────────────────────────────────────────────────────
+function attachAC(inputId){
+  if(!gmReady||!window.google?.maps?.places)return;
+  const el=document.getElementById(inputId);if(!el||gmAC[inputId])return;
+  const ac=new google.maps.places.Autocomplete(el,{
+    componentRestrictions:{country:'ar'},
+    fields:['geometry','formatted_address','name','place_id'],
+    language:'es'
+  });
+  ac.addListener('place_changed',()=>{
+    const p=ac.getPlace();if(!p.geometry)return;
+    const coords={lat:p.geometry.location.lat(),lon:p.geometry.location.lng()};
+    const label=p.name?(p.name+(p.formatted_address?', '+p.formatted_address.split(',').slice(0,2).join(','):'')):p.formatted_address;
+    selectedCoords[inputId]={...coords,name:label,placeId:p.place_id};
+    el.value=label;
+    if(inputId!=='inp-origin'){
+      const id=parseInt(inputId.replace('inp-d',''));
+      const d=destinations.find(x=>x.id===id);
+      if(d){
+        d.name=label;d.coords=coords;d.placeId=p.place_id;
+        // Buscar horarios automáticamente
+        fetchHours(p.place_id,id);
+      }
+    }
+  });
+  gmAC[inputId]=ac;
+}
+
+// ── DESTINATIONS ─────────────────────────────────────────────────────────────
+function addDest(){
+  const id=++uid;
+  destinations.push({id,name:'',coords:null,placeId:null,openFrom:'',openTo:'',stopMins:30,priority:'normal',hoursFromGoogle:false});
+  renderDests();
+}
+function removeDest(id){destinations=destinations.filter(d=>d.id!==id);renderDests();}
+function renderDests(){
+  const list=document.getElementById('dlist');list.innerHTML='';
+  destinations.forEach((d,i)=>{
+    const fid='inp-d'+d.id;
+    const el=document.createElement('div');el.className='ditem';
+    const ph=gmReady?'Escribí el nombre del negocio o dirección...':'Nombre o dirección del lugar...';
+    el.innerHTML=`
+      <div class="dtop">
+        <div class="dnum">${i+1}</div>
+        <input id="${fid}" class="dinp" type="text" autocomplete="off"
+          placeholder="${ph}" value="${d.name}"
+          oninput="syncName(${d.id},this.value)">
+        <button class="xbtn" onclick="removeDest(${d.id})">×</button>
+      </div>
+      <div class="dbot">
+        <select class="sel" onchange="upd(${d.id},'priority',this.value)">
+          <option value="alta" ${d.priority==='alta'?'selected':''}>⭐ Alta</option>
+          <option value="normal" ${d.priority==='normal'?'selected':''}>Normal</option>
+          <option value="baja" ${d.priority==='baja'?'selected':''}>Baja</option>
+        </select>
+        <span class="mlbl">Abre:</span>
+        <input id="open-from-${d.id}" class="tinp" type="time" value="${d.openFrom}" onchange="event.stopPropagation();upd(${d.id},'openFrom',this.value)">
+        <span class="mlbl">Cierra:</span>
+        <input id="open-to-${d.id}" class="tinp" type="time" value="${d.openTo}" onchange="event.stopPropagation();upd(${d.id},'openTo',this.value)">
+        <span class="mlbl">⏱ Tiempo en el lugar:</span>
+        <input class="tinp" type="number" min="0" max="300" step="5" value="${d.stopMins||30}" style="width:60px" title="Minutos que pasás en este lugar"
+          onclick="event.stopPropagation()"
+          onkeydown="event.stopPropagation()"
+          oninput="event.stopPropagation();updDirect(${d.id},'stopMins',parseInt(this.value)||0)"
+          onchange="event.stopPropagation();updDirect(${d.id},'stopMins',parseInt(this.value)||0)">
+        <span class="mlbl">min</span>
+      </div>
+      <div style="padding-left:36px;margin-top:4px">
+        <span id="hours-status-${d.id}" class="hours-loading">${d.hoursFromGoogle&&d.openFrom?'✅ Horarios de Google: '+d.openFrom+(d.openTo?' - '+d.openTo:''):gmReady?'Seleccioná un lugar para cargar horarios automáticamente':''}</span>
+      </div>`;
+    list.appendChild(el);
+    if(gmReady)setTimeout(()=>{delete gmAC[fid];attachAC(fid);},200);
+  });
+  document.getElementById('dcnt').textContent=`${destinations.length} destino${destinations.length!==1?'s':''}`;
+}
+function syncName(id,val){
+  const d=destinations.find(x=>x.id===id);
+  if(d){d.name=val;d.coords=null;d.placeId=null;d.hoursFromGoogle=false;d.openFrom='';d.openTo='';
+    delete selectedCoords['inp-d'+id];
+    const s=document.getElementById('hours-status-'+id);
+    if(s){s.textContent='Seleccioná un lugar para cargar horarios automáticamente';s.className='hours-loading';}
+  }
+}
+function upd(id,f,v){const d=destinations.find(x=>x.id===id);if(d)d[f]=v;}
+// Actualiza sin rerenderizar la lista (para campos numéricos)
+function updDirect(id,f,v){const d=destinations.find(x=>x.id===id);if(d)d[f]=v;}
+function tog(el,key){opts.has(key)?(opts.delete(key),el.classList.remove('on')):(opts.add(key),el.classList.add('on'));}
+
+// ── UBICACIÓN ─────────────────────────────────────────────────────────────────
+function useLoc(){
+  if(!navigator.geolocation){alert('Tu navegador no soporta geolocalización.');return;}
+  navigator.geolocation.getCurrentPosition(pos=>{
+    const{latitude:lat,longitude:lon}=pos.coords;
+    document.getElementById('inp-origin').value='Mi ubicación actual';
+    selectedCoords['inp-origin']={lat,lon,name:'Mi ubicación actual'};
+  },()=>alert('No se pudo obtener tu ubicación.'));
+}
+
+// ── GEOCODE ───────────────────────────────────────────────────────────────────
+function haversine(a,b){
+  const R=6371,dLat=(b.lat-a.lat)*Math.PI/180,dLon=(b.lon-a.lon)*Math.PI/180;
+  const x=Math.sin(dLat/2)**2+Math.cos(a.lat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLon/2)**2;
+  return R*2*Math.atan2(Math.sqrt(x),Math.sqrt(1-x));
+}
+function geocodeGoogle(q){
+  return new Promise((res,rej)=>{
+    geocoder.geocode({address:q+', Argentina',region:'ar'},(results,status)=>{
+      if(status==='OK'&&results[0]){const l=results[0].geometry.location;res({lat:l.lat(),lon:l.lng(),name:results[0].formatted_address});}
+      else rej(new Error(q));
+    });
+  });
+}
+async function geocodeNominatim(q){
+  if(!q.toLowerCase().includes('argentina')&&!q.toLowerCase().includes('buenos aires'))q+=', Argentina';
+  const r=await fetch(`https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(q)}&format=json&limit=1&countrycodes=ar&accept-language=es`);
+  const data=await r.json();
+  if(!data.length)throw new Error(q);
+  return{lat:parseFloat(data[0].lat),lon:parseFloat(data[0].lon),name:data[0].display_name};
+}
+async function resolvePoint(inputId,fallback,existingCoords){
+  if(selectedCoords[inputId])return selectedCoords[inputId];
+  if(existingCoords)return existingCoords;
+  if(gmReady&&geocoder)return await geocodeGoogle(fallback);
+  return await geocodeNominatim(fallback);
+}
+
+// ── DISTANCE MATRIX (tiempos reales de Google) ───────────────────────────────
+async function getGoogleTravelTimes(route){
+  if(!window.google?.maps||!gmReady)return null;
+  const stops=route.filter(s=>!s.isNoche&&s.lat&&s.lon);
+  if(stops.length<2)return null;
+
+  const pairs=[];
+  for(let i=0;i<stops.length-1;i++){
+    pairs.push({origin:stops[i],destination:stops[i+1]});
+  }
+
+  // Procesar en lotes de 10 para no superar límites de la API
+  const BATCH=10;
+  const allTimes=[];
+  const service=new google.maps.DistanceMatrixService();
+
+  for(let b=0;b<pairs.length;b+=BATCH){
+    const batch=pairs.slice(b,b+BATCH);
+    const origins=batch.map(p=>new google.maps.LatLng(p.origin.lat,p.origin.lon));
+    const destinations=batch.map(p=>new google.maps.LatLng(p.destination.lat,p.destination.lon));
+
+    const batchTimes=await new Promise((resolve)=>{
+      service.getDistanceMatrix({
+        origins,
+        destinations,
+        travelMode:google.maps.TravelMode.DRIVING,
+        drivingOptions:{departureTime:new Date(),trafficModel:google.maps.TrafficModel.BEST_GUESS},
+        unitSystem:google.maps.UnitSystem.METRIC
+      },(response,status)=>{
+        if(status!=='OK'){resolve(batch.map(()=>null));return;}
+        const times=[];
+        response.rows.forEach((row,i)=>{
+          const el=row.elements[i];
+          if(el&&el.status==='OK'){
+            const secs=(el.duration_in_traffic||el.duration).value;
+            times.push({durationMin:Math.round(secs/60),distKm:el.distance.value/1000});
+          } else {
+            times.push(null);
+          }
+        });
+        resolve(times);
+      });
+    });
+    allTimes.push(...batchTimes);
+  }
+  return allTimes;
+}
+
+// ── OPTIMIZE ─────────────────────────────────────────────────────────────────
+function nearestNeighbor(origin,pts){
+  const left=[...pts],route=[origin];let cur=origin;
+  while(left.length){
+    let minD=Infinity,minI=0;
+    left.forEach((p,i)=>{let d=haversine(cur,p);if(p.priority==='alta')d*=0.7;if(p.priority==='baja')d*=1.3;if(d<minD){minD=d;minI=i;}});
+    cur=left.splice(minI,1)[0];route.push(cur);
+  }
+  if(opts.has('reg'))route.push({...origin,name:'↩ '+origin.name,isReturn:true});
+  return route;
+}
+async function optimize(){
+  hideErr();
+  const originVal=document.getElementById('inp-origin').value.trim();
+  if(!originVal){showErr('Ingresá desde dónde salís.');return;}
+  const filled=destinations.filter(d=>d.name.trim());
+  if(!filled.length){showErr('Agregá al menos un destino.');return;}
+  setCalc(true);
+  const total=filled.length+1;let done=0;
+  try{
+    setProg(done,total,'Buscando punto de partida...');
+    const originCoords=await resolvePoint('inp-origin',originVal,null);
+    done++;
+    const origin={...originCoords,name:originCoords.name||originVal,isOrigin:true,priority:'normal'};
+    const notFound=[];
+    for(let i=0;i<filled.length;i++){
+      const d=filled[i];setProg(done,total,`Buscando: "${d.name}"...`);
+      try{const c=await resolvePoint('inp-d'+d.id,d.name,d.coords);d.lat=c.lat;d.lon=c.lon;d.resolvedName=c.name||d.name;}
+      catch(e){notFound.push(d.name);d.lat=origin.lat+(Math.random()-.5)*.05;d.lon=origin.lon+(Math.random()-.5)*.05;d.resolvedName=d.name;}
+      done++;
+    }
+    if(notFound.length)showErr(`⚠ No se encontraron: <b>${notFound.join(', ')}</b>. Agregá la ciudad o dirección.`);
+    const route=nearestNeighbor(origin,filled);
+    optimizedRoute=route;
+    // Consultar tiempos reales a Google Maps
+    setProg(total,total,'Consultando tiempos reales de Google Maps...');
+    const googleTimes=await getGoogleTravelTimes(route);
+    if(googleTimes){
+      // Guardar tiempos reales en cada tramo
+      let ti=0;
+      route.forEach((stop,i)=>{
+        if(!stop.isNoche&&i<route.length-1){
+          if(googleTimes[ti]){
+            stop.googleDurationMin=googleTimes[ti].durationMin;
+            stop.googleDistKm=googleTimes[ti].distKm;
+          }
+          ti++;
+        }
+      });
+    }
+    renderResults(route);
+    // Scroll al resultado solo cuando se calcula una ruta nueva
+    setTimeout(()=>document.getElementById('res').scrollIntoView({behavior:'smooth',block:'start'}),200);
+  }catch(e){showErr('No se encontró el punto de partida. Escribí la dirección con más detalle.');console.error(e);}
+  setCalc(false);
+}
+
+// ── RENDER RESULTS ────────────────────────────────────────────────────────────
+function trafficM(){const h=new Date().getHours();return (h>=7&&h<=9)||(h>=17&&h<=20)?1.6:h>=12&&h<=14?1.2:1.0;}
+
+function renderResults(route){
+  const tm=trafficM();
+  // Función que calcula velocidad según distancia del tramo
+  function speedForDist(km){
+    // El tráfico pico solo afecta en ciudad y mixto, no en ruta larga
+    if(km<10) return 50/tm;   // ciudad — afectado por tráfico
+    if(km<50) return 80/(1+(tm-1)*0.5);  // mixto — afectado a medias
+    return 110;                // ruta nacional — sin penalidad de tráfico urbano
+  }
+  const speed=60/tm; // velocidad base para stats generales
+  let totalDist=0;
+  for(let i=0;i<route.length-1;i++){
+    totalDist+=route[i].googleDistKm||haversine(route[i],route[i+1]);
+  }
+  // Tiempo total: viaje + tiempo en cada parada + almuerzos (sin contar noches)
+  let totalMin=0;
+  for(let i=0;i<route.length-1;i++){
+    const s=route[i];
+    if(s.isNoche) continue; // las noches no cuentan en el total de horas activas
+    if(s.isAlmuerzo){
+      totalMin+=s.almuerzoMins||60;
+      continue;
+    }
+    const legD=s.googleDistKm||haversine(s,route[i+1]);
+    const legT=s.googleDurationMin||(legD/speedForDist(legD))*60;
+    const sTime=(i>0)?(s.stopMins!==undefined?s.stopMins:30):0; // origen no tiene stopTime
+    totalMin+=sTime+legT;
+  }
+  const fuelL=totalDist/12,fuelCost=Math.round(fuelL*1450);
+
+  document.getElementById('sgrid').innerHTML=`
+    <div class="sc"><div class="sv">${totalDist.toFixed(1)}<span style="font-size:12px;color:var(--mut)"> km</span></div><div class="slb">Distancia</div></div>
+    <div class="sc"><div class="sv">${Math.round(totalMin)}<span style="font-size:12px;color:var(--mut)"> min</span></div><div class="slb">Tiempo aprox.</div></div>
+    <div class="sc"><div class="sv">$${fuelCost.toLocaleString('es-AR')}</div><div class="slb">Costo nafta</div></div>`;
+
+  const list=document.getElementById('rlist');list.innerHTML='';
+  // Hora de salida configurable
+  const horaInp=document.getElementById('hora-salida');
+  const [hSal,mSal]=(horaInp?horaInp.value:'08:00').split(':').map(Number);
+  const now=new Date();
+  now.setHours(hSal,mSal,0,0);
+  let elapsed=0;
+  // Día actual para tracking de noches
+  let currentDayOffset=0;
+  const tTag=tm>=1.5?'🔴 Tráfico pesado':tm>=1.2?'🟡 Tráfico moderado':'🟢 Tráfico fluido';
+  const tCls=tm>=1.2?'w':'ok';
+
+  route.forEach((stop,i)=>{
+    const isFirst=i===0,isLast=i===route.length-1;
+    let dc='st',icon=String(i);
+    if(isFirst||stop.isReturn){dc='or';icon='🏠';}
+    else if(isLast&&!stop.isNoche){dc='fi';}
+    const isNoche=!!stop.isNoche;
+    if(isNoche){dc='st';icon='🌙';}
+
+    const eta=new Date(now.getTime()+elapsed*60000);
+    const etaStr=eta.toLocaleTimeString('es-AR',{hour:'2-digit',minute:'2-digit'});
+    const arrMin=eta.getHours()*60+eta.getMinutes();
+
+    // ── ALERTAS HORARIO (soporta horario partido) ───────────────────────────
+    let openTag='',alertClass='';
+    if(stop.openFrom||stop.openTo||(stop.periods&&stop.periods.length)){
+      const src=stop.hoursFromGoogle?' (Google)':'';
+      const periods=stop.periods&&stop.periods.length?stop.periods:
+        [{open:stop.openFrom?(()=>{const[h,m]=stop.openFrom.split(':').map(Number);return h*60+m;})():0,
+          close:stop.openTo?(()=>{const[h,m]=stop.openTo.split(':').map(Number);return h*60+m;})():1440}];
+
+      // Ver si el horario de llegada cae dentro de algún turno
+      const openPeriod=periods.find(p=>arrMin>=p.open&&arrMin<=p.close);
+      const nextPeriod=periods.find(p=>p.open>arrMin); // próximo turno que abre
+      const lastPeriod=periods[periods.length-1];
+
+      if(openPeriod){
+        const minToClose=openPeriod.close-arrMin;
+        if(minToClose<=30){
+          const hh=String(Math.floor(openPeriod.close/60)).padStart(2,'0');
+          const mm=String(openPeriod.close%60).padStart(2,'0');
+          openTag=`<span class="stag w">⚠ Próximo a cerrar${src} · quedan ~${minToClose} min (cierra ${hh}:${mm})</span>`;
+          alertClass='alert-closing';
+        } else {
+          const hh=String(Math.floor(openPeriod.close/60)).padStart(2,'0');
+          const mm=String(openPeriod.close%60).padStart(2,'0');
+          openTag=`<span class="stag ok">✓ Abierto${src} · cierra ${hh}:${mm}</span>`;
+        }
+      } else if(nextPeriod){
+        // Entre turnos (siesta) o antes de abrir
+        const hh=String(Math.floor(nextPeriod.open/60)).padStart(2,'0');
+        const mm=String(nextPeriod.open%60).padStart(2,'0');
+        if(arrMin<periods[0].open){
+          openTag=`<span class="stag err">🔴 CERRADO al llegar${src} · abre ${hh}:${mm}</span>`;
+        } else {
+          openTag=`<span class="stag w">⚠ En siesta al llegar${src} · reabre ${hh}:${mm}</span>`;
+        }
+        alertClass='alert-closed';
+      } else {
+        // Después del último turno
+        openTag=`<span class="stag err">🔴 CERRADO al llegar${src} · cerró ${stop.openTo||''}</span>`;
+        alertClass='alert-closed';
+      }
+    }
+
+    let legTxt='';
+    const stMin=(!isFirst&&!stop.isReturn&&!stop.isNoche&&!stop.isAlmuerzo)?(stop.stopMins!==undefined?stop.stopMins:30):0;
+    if(i<route.length-1&&!stop.isNoche&&!stop.isAlmuerzo){
+      // Buscar la siguiente parada real (saltando almuerzos y noches intermedias)
+      let nextRealIdx=i+1;
+      while(nextRealIdx<route.length-1&&(route[nextRealIdx].isAlmuerzo||route[nextRealIdx].isNoche)) nextRealIdx++;
+      const nextReal=route[nextRealIdx];
+      // Distancia y tiempo a la siguiente parada real
+      const d=stop.googleDistKm||(nextReal&&nextReal.lat?haversine(stop,nextReal):0);
+      const legSpd=speedForDist(d);
+      const t=stop.googleDurationMin||(d>0?(d/legSpd)*60:0);
+      const src=stop.googleDurationMin?' (Google Maps)':'';
+      // Sumar almuerzos intermedios al tiempo total hasta la próxima
+      let almuerzoExtra=0;
+      for(let j=i+1;j<nextRealIdx;j++){
+        if(route[j].isAlmuerzo) almuerzoExtra+=route[j].almuerzoMins||60;
+      }
+      const totalToNext=Math.round(t+almuerzoExtra);
+      const almuerzoNote=almuerzoExtra>0?` (incluye ${almuerzoExtra} min de almuerzo)`:'';
+      legTxt=`<div class="leg" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:5px">
+        <span style="display:flex;align-items:center;gap:4px">⏱
+          <input type="number" min="0" max="300" step="5" value="${stMin}"
+            style="width:52px;background:var(--sur2);border:1px solid var(--bor);border-radius:5px;padding:2px 5px;color:var(--txt);font-size:12px;outline:none"
+            title="Minutos en este lugar"
+            onclick="event.stopPropagation()"
+            onkeydown="event.stopPropagation()"
+            onchange="event.stopPropagation();updateStopMins(${i},parseInt(this.value)||0)">
+          <span style="font-size:11px;color:var(--mut)">min en el lugar</span>
+        </span>
+        <span style="font-size:12px;color:var(--mut)">↓ ${d.toFixed(1)} km · ~${totalToNext} min hasta la próxima${src}${almuerzoNote}</span>
+      </div>`;
+    }
+
+    const el=document.createElement('div');
+    const isAlmuerzo=!!stop.isAlmuerzo;
+    el.className='rstop'+(isNoche?' noche-stop':isAlmuerzo?' almuerzo-stop':'')+(alertClass?' '+alertClass:'');
+    el.setAttribute('draggable', !isFirst&&!stop.isReturn?'true':'false');
+    el.dataset.idx=i;
+    el.innerHTML=`
+      ${!isFirst&&!stop.isReturn?`<button class="stop-remove" onclick="removeFromResult(${i})" title="Quitar parada">×</button>`:''}
+      ${!isFirst&&!stop.isReturn&&!isNoche?'<span class="drag-handle" title="Arrastrá para reordenar">⠿</span>':''}
+      <div class="sdot ${dc}">${icon}</div>
+      <div class="sinf">
+        ${isNoche?`
+          <div class="snm" style="color:#a78bfa">🌙 Noche — ${stop.name||'Parada para dormir'}</div>
+          <div class="noche-salida">
+            <span class="noche-salida-lbl">Salida al día siguiente:</span>
+            <input class="noche-salida-inp" type="time" value="${stop.horaSalida||'08:00'}"
+              onchange="updateNocheSalida(${i},this.value)">
+          </div>
+        `:isAlmuerzo?`
+          <div class="snm" style="color:var(--yel)">🍽 Almuerzo</div>
+          <div class="noche-salida">
+            <span class="noche-salida-lbl">Tiempo de almuerzo:</span>
+            <input class="noche-salida-inp" type="number" min="15" max="180" step="15" value="${stop.almuerzoMins||60}"
+              style="width:60px"
+              onclick="event.stopPropagation()"
+              onkeydown="event.stopPropagation()"
+              onchange="event.stopPropagation();updateAlmuerzoMins(${i},parseInt(this.value)||60)">
+            <span class="noche-salida-lbl">min</span>
+          </div>
+        `:`
+          <div class="snm">${stop.resolvedName||stop.name}</div>
+          <div class="smeta">
+            <span class="stag">🕐 Llegás ~${etaStr}</span>
+            ${openTag}
+            ${i===0?`<span class="stag ${tCls}">${tTag}</span>`:''}
+          </div>
+          ${legTxt}
+        `}
+      </div>`;
+    // Drag events
+    if(!isFirst&&!stop.isReturn){
+      el.addEventListener('dragstart',e=>{e.dataTransfer.setData('text/plain',i);el.classList.add('dragging');});
+      el.addEventListener('dragend',()=>el.classList.remove('dragging'));
+      el.addEventListener('dragover',e=>{e.preventDefault();el.classList.add('drag-over');});
+      el.addEventListener('dragleave',()=>el.classList.remove('drag-over'));
+      el.addEventListener('drop',e=>{
+        e.preventDefault();el.classList.remove('drag-over');
+        const fromIdx=parseInt(e.dataTransfer.getData('text/plain'));
+        const toIdx=parseInt(el.dataset.idx);
+        if(fromIdx===toIdx)return;
+        // Reorder optimizedRoute (skip index 0 which is origin)
+        const moved=optimizedRoute.splice(fromIdx,1)[0];
+        optimizedRoute.splice(toIdx,0,moved);
+        renderResults(optimizedRoute);
+      });
+    }
+    list.appendChild(el);
+
+    // Botones entre paradas
+    if(i<route.length-1&&!stop.isReturn&&!stop.isNoche&&!stop.isAlmuerzo){
+      const wrap=document.createElement('div');
+      wrap.className='btns-between';
+      wrap.innerHTML=`
+        <button class="insert-almuerzo-btn" onclick="insertarAlmuerzo(${i})">🍽 Parar a almorzar</button>
+        <button class="insert-noche-btn" onclick="insertarNoche(${i})">🌙 Hacer noche acá</button>`;
+      list.appendChild(wrap);
+    }
+
+    if(i<route.length-1){
+      if(stop.isNoche){
+        // Noche: resetear al día siguiente
+        const [hNext,mNext]=(stop.horaSalida||'08:00').split(':').map(Number);
+        currentDayOffset++;
+        const nextDay=new Date(now);
+        nextDay.setDate(nextDay.getDate()+currentDayOffset);
+        nextDay.setHours(hNext,mNext,0,0);
+        elapsed=(nextDay-now)/60000;
+      } else if(stop.isAlmuerzo){
+        // Almuerzo: solo suma el tiempo de pausa (ya llegó, almuerza y sigue)
+        elapsed+=stop.almuerzoMins||60;
+      } else {
+        // Parada normal: tiempo en el lugar + viaje a la próxima
+        // stopTime = tiempo que pasás en ESTA parada antes de salir
+        const stopTime=(!isFirst)?(stop.stopMins!==undefined?stop.stopMins:30):0;
+        const legDist=stop.googleDistKm||haversine(stop,route[i+1]);
+        const legSpeed=speedForDist(legDist);
+        const legMin=stop.googleDurationMin||(legDist/legSpeed)*60;
+        elapsed+=stopTime+legMin;
+      }
+    }
+  });
+
+  const tips=[];
+  if(tm>=1.5)tips.push('Estás en horario pico. Considerá salir antes de las 7am o después de las 20hs.');
+  if(fuelL>4)tips.push(`Vas a usar ~${fuelL.toFixed(1)}L de nafta. Agrupar paradas reduce el gasto.`);
+  tips.push('Tocá × en una parada para quitarla del recorrido sin recalcular todo.');
+  tips.push('Los horarios en rojo o amarillo requieren atención — llegás fuera de horario.');
+  document.getElementById('tips').innerHTML=`<div class="tlbl">💡 Sugerencias</div>${tips.map(t=>`<div class="tip">${t}</div>`).join('')}`;
+
+  document.getElementById('print-title').textContent='Ruta optimizada — '+new Date().toLocaleDateString('es-AR',{weekday:'long',day:'numeric',month:'long'});
+  document.getElementById('print-date').textContent=`${route.filter(s=>!s.isOrigin&&!s.isReturn).length} paradas · ${totalDist.toFixed(1)} km · ~${Math.round(totalMin)} min · Nafta: $${fuelCost.toLocaleString('es-AR')}`;
+
+  document.getElementById('res').style.display='block';
+  document.getElementById('divider').style.display='block';
+  // scroll solo se hace desde optimize() al calcular por primera vez
+  // Sugerencias de hoteles si viaje largo
+  setTimeout(()=>calcularNoches(route),300);
+}
+
+function removeFromResult(idx){optimizedRoute.splice(idx,1);
+renderResults(optimizedRoute);}
+
+function insertarAlmuerzo(afterIdx){
+  const almuerzo={
+    isAlmuerzo:true,
+    name:'Almuerzo',
+    resolvedName:'Almuerzo',
+    lat:optimizedRoute[afterIdx].lat,
+    lon:optimizedRoute[afterIdx].lon,
+    almuerzoMins:60,
+    priority:'normal'
+  };
+  optimizedRoute.splice(afterIdx+1,0,almuerzo);
+  renderResults(optimizedRoute);
+}
+
+function updateAlmuerzoMins(idx,val){
+  if(optimizedRoute[idx]) optimizedRoute[idx].almuerzoMins=val;
+  renderResults(optimizedRoute);
+}
+
+function insertarNoche(afterIdx){
+  const noche={
+    isNoche:true,
+    name:'Noche',
+    resolvedName:'Noche',
+    lat:optimizedRoute[afterIdx].lat,
+    lon:optimizedRoute[afterIdx].lon,
+    horaSalida:'08:00',
+    priority:'normal'
+  };
+  optimizedRoute.splice(afterIdx+1,0,noche);
+  renderResults(optimizedRoute);
+}
+
+function updateNocheSalida(idx,val){
+  if(optimizedRoute[idx]) optimizedRoute[idx].horaSalida=val;
+  renderResults(optimizedRoute);
+}
+
+function updateStopMins(idx,val){
+  if(optimizedRoute[idx]) optimizedRoute[idx].stopMins=val;
+  renderResults(optimizedRoute);
+}
+
+function recalcularHorarios(){
+  renderResults(optimizedRoute);
+}
+
+// ── SUGERENCIAS DE HOTEL ──────────────────────────────────────────────────────
+function calcularNoches(route){
+  if(!viajeLargoActivo||diasViaje<=1){
+    document.getElementById('noches-section').style.display='none';
+    return;
+  }
+  const stops=route.filter(s=>!s.isOrigin&&!s.isReturn);
+  if(stops.length<2){document.getElementById('noches-section').style.display='none';return;}
+
+  const noches=diasViaje-1; // noches = días - 1
+  const stopsPerDay=Math.floor(stops.length/diasViaje);
+
+  // Calcular puntos de corte (después de cuántas paradas hacer noche)
+  const cortes=[];
+  for(let n=1;n<=noches;n++){
+    const idx=Math.round((stops.length/diasViaje)*n)-1;
+    if(idx>=0&&idx<stops.length-1) cortes.push(idx);
+  }
+
+  document.getElementById('noches-section').style.display='block';
+  document.getElementById('noches-subtitle').textContent=`${diasViaje} días · ${noches} noche${noches>1?'s':''}`;
+  const container=document.getElementById('noches-content');
+  container.innerHTML='';
+
+  cortes.forEach((corteIdx,ni)=>{
+    const stopDespues=stops[corteIdx];
+    const div=document.createElement('div');
+    div.className='noche-block';
+    div.innerHTML=`
+      <div class="noche-titulo">🌙 Noche ${ni+1} — Fin del día ${ni+1}</div>
+      <div class="noche-lugar">Cerca de: <b>${stopDespues.resolvedName||stopDespues.name}</b></div>
+      <div class="hoteles-list" id="hoteles-${ni}">
+        <div class="hotel-loading">Buscando hoteles cercanos...</div>
+      </div>`;
+    container.appendChild(div);
+
+    // Buscar hoteles cerca de esa parada
+    if(placesService&&stopDespues.lat){
+      buscarHoteles(stopDespues.lat,stopDespues.lon,ni);
+    } else {
+      document.getElementById('hoteles-'+ni).innerHTML=
+        '<div class="hotel-loading">Conectá Google Maps para ver sugerencias de hoteles.</div>';
+    }
+  });
+}
+
+function buscarHoteles(lat,lon,nocheIdx){
+  const loc=new google.maps.LatLng(lat,lon);
+  const req={
+    location:loc,
+    radius:5000,
+    type:'lodging',
+    keyword:'hotel',
+    minPriceLevel:1,
+    maxPriceLevel:3
+  };
+  placesService.nearbySearch(req,(results,status)=>{
+    const container=document.getElementById('hoteles-'+nocheIdx);
+    if(!container)return;
+    if(status!==google.maps.places.PlacesServiceStatus.OK||!results.length){
+      container.innerHTML='<div class="hotel-loading">No se encontraron hoteles cercanos.</div>';
+      return;
+    }
+    // Filtrar por rating >= 3.5 y ordenar por rating desc
+    const buenos=results
+      .filter(h=>!h.rating||h.rating>=3.5)
+      .sort((a,b)=>(b.rating||0)-(a.rating||0))
+      .slice(0,4);
+
+    if(!buenos.length){
+      container.innerHTML='<div class="hotel-loading">No se encontraron hoteles con buena calificación.</div>';
+      return;
+    }
+
+    container.innerHTML=buenos.map(h=>{
+      const stars='★'.repeat(Math.round(h.price_level||2))+'☆'.repeat(3-Math.round(h.price_level||2));
+      const rating=h.rating?`⭐ ${h.rating} (${h.user_ratings_total||0} reseñas)`:'Sin calificación';
+      const addr=h.vicinity||'';
+      const mapsUrl=`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(h.name)}&query_place_id=${h.place_id}`;
+      return `<div class="hotel-item">
+        <div class="hotel-info">
+          <div class="hotel-name">${h.name}</div>
+          <div class="hotel-rating">${rating}</div>
+          <div class="hotel-addr">${addr}</div>
+          <div class="hotel-stars">${stars}</div>
+        </div>
+        <button class="hotel-link" onclick="window.open('${mapsUrl}','_blank')">Ver en Maps</button>
+      </div>`;
+    }).join('');
+  });
+}
+
+// ── EDITAR RUTA ───────────────────────────────────────────────────────────────
+function editRoute(){
+  // Ocultar resultados
+  document.getElementById('res').style.display='none';
+  document.getElementById('divider').style.display='none';
+  // Cargar los destinos actuales del recorrido (sin origen ni vuelta)
+  const stops=optimizedRoute.filter(s=>!s.isOrigin&&!s.isReturn);
+  // Setear origen
+  const origin=optimizedRoute[0];
+  if(origin){
+    document.getElementById('inp-origin').value=origin.name||'';
+    selectedCoords['inp-origin']={lat:origin.lat,lon:origin.lon,name:origin.name};
+  }
+  // Reconstruir destinos
+  destinations=[];gmAC={};uid=0;
+  stops.forEach(s=>{
+    const id=++uid;
+    destinations.push({
+      id,
+      name:s.resolvedName||s.name,
+      coords:s.lat?{lat:s.lat,lon:s.lon}:null,
+      placeId:s.placeId||null,
+      openFrom:s.openFrom||'',
+      openTo:s.openTo||'',
+      periods:s.periods||[],
+      priority:s.priority||'normal',
+      hoursFromGoogle:s.hoursFromGoogle||false
+    });
+  });
+  renderDests();
+  // Re-seleccionar coords
+  stops.forEach((s,i)=>{
+    const id=i+1;
+    if(s.lat) selectedCoords['inp-d'+id]={lat:s.lat,lon:s.lon,name:s.resolvedName||s.name};
+  });
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+// ── GUARDAR RECORRIDO (Firebase + localStorage fallback) ─────────────────────
+async function saveRoute(){
+  const name=prompt('Nombre para este recorrido:');if(!name)return;
+  if(window.fbReady){
+    try{await window.fbSaveRoute(name,optimizedRoute);await renderSaved();alert('✅ Guardado en la nube — disponible en todos tus dispositivos.');return;}
+    catch(e){console.warn('Firebase error',e);}
+  }
+  const saved=JSON.parse(localStorage.getItem('rm_routes')||'[]');
+  saved.push({id:Date.now(),name,date:new Date().toLocaleDateString('es-AR'),route:optimizedRoute});
+  localStorage.setItem('rm_routes',JSON.stringify(saved));
+  renderSaved();alert('✅ Recorrido guardado.');
+}
+async function renderSaved(){
+  const card=document.getElementById('saved-card');
+  const list=document.getElementById('saved-list');
+  let routes=[];
+  if(window.fbReady){try{routes=await window.fbGetRoutes();}catch(e){routes=JSON.parse(localStorage.getItem('rm_routes')||'[]');}}
+  else{routes=JSON.parse(localStorage.getItem('rm_routes')||'[]');}
+  if(!routes.length){
+    card.style.display='block';
+    list.innerHTML='<div style="font-size:13px;color:var(--mut);text-align:center;padding:10px">No tenés recorridos guardados todavía. Calculá una ruta y tocá 💾 Guardar.</div>';
+    return;
+  }
+  card.style.display='block';
+  window._savedRoutes=routes;
+  list.innerHTML=routes.map(r=>`
+    <div class="saved-item">
+      <div class="saved-item-name">📍 ${r.name}</div>
+      <div class="saved-item-date">${r.date}</div>
+      <div class="saved-item-btns">
+        <button class="sbtn" onclick="loadRoute('${r.id}')">Cargar</button>
+        <button class="sbtn del" onclick="deleteRoute('${r.id}')">Borrar</button>
+      </div>
+    </div>`).join('');
+}
+async function loadRoute(id){
+  const r=(window._savedRoutes||[]).find(x=>String(x.id)===String(id));
+  if(!r)return;
+  optimizedRoute=r.route;
+  // Limpiar tiempos viejos para forzar recálculo
+  optimizedRoute.forEach(s=>{ delete s.googleDurationMin; delete s.googleDistKm; });
+  // Mostrar primero con tiempos estimados
+  renderResults(optimizedRoute);
+  // Recalcular con Google — esperar a que Google Maps esté listo
+  const recalcular=async()=>{
+    const validStops=optimizedRoute.filter(s=>s.lat&&s.lon&&!s.isNoche);
+    if(validStops.length<2){return;}
+    try{
+      const googleTimes=await getGoogleTravelTimes(optimizedRoute);
+      if(googleTimes&&googleTimes.length){
+        let ti=0;
+        optimizedRoute.forEach((stop,i)=>{
+          if(!stop.isNoche&&i<optimizedRoute.length-1){
+            if(googleTimes[ti]){
+              stop.googleDurationMin=googleTimes[ti].durationMin;
+              stop.googleDistKm=googleTimes[ti].distKm;
+            }
+            ti++;
+          }
+        });
+        renderResults(optimizedRoute);
+      }
+    }catch(e){console.warn('Error recalculando tiempos:',e);}
+  };
+  // Si Google ya está listo, recalcular ahora; sino esperar
+  if(gmReady&&window.google?.maps){
+    setTimeout(recalcular,500);
+  } else {
+    // Esperar hasta que Google Maps cargue
+    const interval=setInterval(()=>{
+      if(gmReady&&window.google?.maps){clearInterval(interval);recalcular();}
+    },300);
+    setTimeout(()=>clearInterval(interval),10000);
+  }
+}
+async function deleteRoute(id){
+  if(!confirm('¿Borrar este recorrido?'))return;
+  if(window.fbReady){try{await window.fbDeleteRoute(id);await renderSaved();return;}catch(e){console.warn(e);}}
+  let saved=JSON.parse(localStorage.getItem('rm_routes')||'[]');
+  saved=saved.filter(x=>String(x.id)!==String(id));
+  localStorage.setItem('rm_routes',JSON.stringify(saved));renderSaved();
+}
+
+function printRoute(){window.print();}
+function openMaps(){
+  const stops=optimizedRoute.filter(s=>!s.isReturn);if(stops.length<2)return;
+  const o=encodeURIComponent(stops[0].name),d=encodeURIComponent(stops[stops.length-1].name);
+  const wp=stops.slice(1,-1).map(s=>encodeURIComponent(s.name)).join('|');
+  window.open(`https://www.google.com/maps/dir/?api=1&origin=${o}&destination=${d}${wp?'&waypoints='+wp:''}&travelmode=driving`,'_blank');
+}
+function openWaze(){
+  const stops=optimizedRoute.filter(s=>!s.isReturn);if(stops.length<2)return;
+  window.open(`https://www.waze.com/ul?q=${encodeURIComponent(stops[1].name)}&navigate=yes`,'_blank');
+}
+function setCalc(v){
+  const b=document.getElementById('btn-calc');b.disabled=v;b.textContent=v?'Calculando...':'⚡ Calcular ruta óptima';
+  document.getElementById('progress').style.display=v?'block':'none';
+}
+function setProg(done,total,txt){document.getElementById('pb').style.width=Math.round((done/total)*100)+'%';document.getElementById('ptxt').textContent=txt;}
+function showErr(msg){const el=document.getElementById('errmsg');el.innerHTML=msg;el.style.display='block';}
+function hideErr(){document.getElementById('errmsg').style.display='none';}
+function resetV(){
+  document.getElementById('res').style.display='none';
+  document.getElementById('divider').style.display='none';
+  hideErr();
+  document.getElementById('inp-origin').value='';
+  delete selectedCoords['inp-origin'];
+  destinations=[];gmAC={};selectedCoords={};uid=0;optimizedRoute=[];
+  addDest();addDest();addDest();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+</script>
+</body>
+</html>
