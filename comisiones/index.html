@@ -1,0 +1,1196 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Comisiones PF</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<style>
+:root{
+  --bg:#0f1117;--surface:#1a1d27;--surface2:#22263a;--border:#2a2f45;
+  --cyan:#00d4ff;--purple:#7c3aed;--green:#10b981;--red:#ef4444;
+  --yellow:#f59e0b;--text:#e2e8f0;--muted:#94a3b8;--sm:14px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',sans-serif;font-size:var(--sm)}
+a{color:var(--cyan);text-decoration:none}
+
+/* Layout */
+#app{display:flex;flex-direction:column;min-height:100vh}
+header{background:var(--surface);border-bottom:1px solid var(--border);
+  padding:12px 24px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+header h1{font-size:18px;font-weight:700;color:var(--cyan)}
+header .sync-btn{background:var(--purple);color:#fff;border:none;border-radius:6px;
+  padding:7px 14px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px}
+header .sync-btn:hover{opacity:.85}
+header .sync-status{font-size:12px;color:var(--muted)}
+
+nav{background:var(--surface);border-bottom:1px solid var(--border);
+  display:flex;gap:2px;padding:0 20px;overflow-x:auto}
+nav button{background:none;border:none;color:var(--muted);padding:12px 18px;
+  cursor:pointer;font-size:13px;border-bottom:2px solid transparent;white-space:nowrap;
+  transition:.15s}
+nav button:hover{color:var(--text)}
+nav button.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+
+main{flex:1;padding:24px;max-width:1400px;margin:0 auto;width:100%}
+
+/* Cards */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:16px;margin-bottom:24px}
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:20px}
+.card h3{font-size:15px;font-weight:600;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card .big{font-size:26px;font-weight:700;color:var(--cyan)}
+.card .label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.card .row{display:flex;justify-content:space-between;margin-top:8px;padding-top:8px;
+  border-top:1px solid var(--border)}
+.card .pill{display:inline-block;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600}
+.pill-green{background:#10b98122;color:var(--green)}
+.pill-yellow{background:#f59e0b22;color:var(--yellow)}
+.pill-purple{background:#7c3aed22;color:#a78bfa}
+.badge{display:inline-block;padding:2px 7px;border-radius:4px;font-size:11px;font-weight:600;
+  background:#ef444422;color:var(--red)}
+
+/* Tables */
+.tbl-wrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border)}
+table{width:100%;border-collapse:collapse}
+th{background:var(--surface2);padding:10px 14px;text-align:left;font-size:11px;
+   color:var(--muted);text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
+td{padding:10px 14px;border-top:1px solid var(--border);font-size:13px;white-space:nowrap}
+tr:hover td{background:#ffffff06}
+.tbl-wrap+.pagination{margin-top:12px;display:flex;align-items:center;gap:8px}
+button.pg{background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  padding:5px 12px;border-radius:6px;cursor:pointer}
+button.pg:hover{border-color:var(--cyan)}
+
+/* Forms */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+@media(max-width:600px){.form-grid{grid-template-columns:1fr}}
+.field{display:flex;flex-direction:column;gap:6px}
+label{font-size:12px;color:var(--muted);font-weight:500}
+input,select,textarea{background:var(--surface2);border:1px solid var(--border);color:var(--text);
+  border-radius:8px;padding:9px 12px;font-size:13px;width:100%}
+input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
+.btn{border:none;border-radius:8px;padding:9px 18px;cursor:pointer;font-size:13px;
+  font-weight:600;transition:.15s}
+.btn:hover{opacity:.85}
+.btn-primary{background:var(--cyan);color:#000}
+.btn-secondary{background:var(--surface2);color:var(--text);border:1px solid var(--border)}
+.btn-danger{background:var(--red);color:#fff}
+.btn-green{background:var(--green);color:#000}
+.btn-sm{padding:5px 10px;font-size:12px}
+
+/* Tier bars */
+.tier-bar{display:flex;flex-direction:column;gap:6px;margin-top:10px}
+.tier-row{display:flex;align-items:center;gap:10px}
+.tier-label{font-size:11px;color:var(--muted);width:130px;flex-shrink:0}
+.tier-track{flex:1;height:8px;background:var(--surface2);border-radius:4px;overflow:hidden}
+.tier-fill{height:100%;border-radius:4px;background:linear-gradient(90deg,var(--purple),var(--cyan));
+  transition:width .4s}
+.tier-pct{font-size:11px;color:var(--cyan);width:30px;text-align:right}
+
+/* Progress to next tier */
+.next-tier{background:var(--surface2);border-radius:8px;padding:10px 14px;margin-top:10px;
+  font-size:12px;color:var(--muted)}
+.next-tier strong{color:var(--yellow)}
+
+/* Modal */
+.modal-bg{display:none;position:fixed;inset:0;background:#00000088;z-index:100;
+  align-items:center;justify-content:center}
+.modal-bg.open{display:flex}
+.modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;
+  padding:28px;min-width:360px;max-width:560px;width:90%;max-height:90vh;overflow-y:auto}
+.modal h2{font-size:16px;font-weight:700;margin-bottom:20px;color:var(--cyan)}
+.modal-footer{display:flex;gap:10px;justify-content:flex-end;margin-top:20px}
+
+/* Escala editor */
+.escala-table{width:100%;border-collapse:collapse;margin-top:8px}
+.escala-table th{font-size:11px;color:var(--muted);text-transform:uppercase;padding:6px}
+.escala-table td{padding:4px}
+.escala-table input[type=number]{padding:5px 8px}
+
+/* Toast */
+.toast-cont{position:fixed;bottom:24px;right:24px;z-index:999;display:flex;
+  flex-direction:column;gap:8px}
+.toast{background:var(--surface);border:1px solid var(--border);border-radius:8px;
+  padding:12px 18px;font-size:13px;animation:slideIn .2s;box-shadow:0 4px 20px #000a}
+.toast.ok{border-color:var(--green)}
+.toast.err{border-color:var(--red)}
+@keyframes slideIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
+
+/* Sections */
+.section-header{display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:16px;flex-wrap:wrap;gap:10px}
+.section-header h2{font-size:16px;font-weight:700}
+.search-bar{display:flex;gap:10px;align-items:center}
+.search-bar input{width:220px}
+
+/* Período selector */
+.periodo{display:flex;align-items:center;gap:10px}
+.periodo select{width:auto}
+
+/* Chip */
+.chip{display:inline-flex;align-items:center;gap:5px;padding:3px 10px;border-radius:20px;
+  font-size:11px;font-weight:600;cursor:pointer}
+.chip-active{background:#00d4ff22;color:var(--cyan);border:1px solid #00d4ff44}
+.chip-inactive{background:#ef444422;color:var(--red);border:1px solid #ef444444}
+
+/* Summary print */
+@media print{
+  header,nav,#no-print{display:none!important}
+  .card{break-inside:avoid}
+}
+
+/* Spinner */
+.spin{display:inline-block;width:14px;height:14px;border:2px solid #fff4;
+  border-top-color:#fff;border-radius:50%;animation:spin .6s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+
+.empty{text-align:center;padding:40px;color:var(--muted)}
+
+.fmt-currency{font-family:'Courier New',monospace}
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <h1>🏷️ Comisiones PF</h1>
+    <div style="display:flex;align-items:center;gap:14px">
+      <span class="sync-status" id="sync-status">—</span>
+      <button class="sync-btn" onclick="sincronizar()">
+        <span id="sync-icon">⟳</span> Sincronizar Xubio
+      </button>
+    </div>
+  </header>
+
+  <nav>
+    <button class="active" onclick="showTab('dashboard')">Panel</button>
+    <button onclick="showTab('vendedores')">Vendedores</button>
+    <button onclick="showTab('facturas')">Facturas</button>
+    <button onclick="showTab('resumenes')">Resúmenes</button>
+    <button onclick="showTab('estadisticas')">Estadísticas</button>
+    <button onclick="showTab('config')">Configuración</button>
+  </nav>
+
+  <main>
+    <!-- ── DASHBOARD ── -->
+    <div id="tab-dashboard">
+      <div class="section-header">
+        <h2>Panel de Comisiones</h2>
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+          <div class="periodo">
+            <select id="dash-mes" onchange="loadDashboard()">
+              <option value="1">Enero</option><option value="2">Febrero</option>
+              <option value="3">Marzo</option><option value="4">Abril</option>
+              <option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option>
+              <option value="9">Septiembre</option><option value="10">Octubre</option>
+              <option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <select id="dash-anio" onchange="loadDashboard()"></select>
+          </div>
+          <button class="btn btn-primary" onclick="generarTodosResumenes()">
+            💾 Guardar Resúmenes
+          </button>
+        </div>
+      </div>
+
+      <div id="dash-alerta" style="display:none;background:#f59e0b11;border:1px solid var(--yellow);
+        border-radius:8px;padding:12px 16px;margin-bottom:16px;font-size:13px;color:var(--yellow)">
+      </div>
+
+      <div id="dash-cards" class="cards"></div>
+
+      <div id="dash-sync-info" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
+    </div>
+
+    <!-- ── VENDEDORES ── -->
+    <div id="tab-vendedores" style="display:none">
+      <div class="section-header">
+        <h2>Vendedores</h2>
+        <button class="btn btn-primary" onclick="openModalVendedor()">+ Nuevo Vendedor</button>
+      </div>
+      <div id="vendedores-list"></div>
+    </div>
+
+    <!-- ── FACTURAS ── -->
+    <div id="tab-facturas" style="display:none">
+      <div class="section-header">
+        <h2>Facturas</h2>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <div class="periodo">
+            <select id="fact-mes" onchange="loadFacturas()">
+              <option value="">Todos</option>
+              <option value="1">Enero</option><option value="2">Febrero</option>
+              <option value="3">Marzo</option><option value="4">Abril</option>
+              <option value="5">Mayo</option><option value="6">Junio</option>
+              <option value="7">Julio</option><option value="8">Agosto</option>
+              <option value="9">Septiembre</option><option value="10">Octubre</option>
+              <option value="11">Noviembre</option><option value="12">Diciembre</option>
+            </select>
+            <select id="fact-anio" onchange="loadFacturas()"></select>
+          </div>
+          <select id="fact-vendedor" onchange="loadFacturas()" style="width:180px">
+            <option value="">Todos los vendedores</option>
+          </select>
+          <label style="display:flex;align-items:center;gap:6px;color:var(--text);cursor:pointer">
+            <input type="checkbox" id="fact-sin-vendedor" onchange="loadFacturas()">
+            Sin vendedor
+          </label>
+        </div>
+      </div>
+      <div id="facturas-table"></div>
+      <div class="pagination" id="fact-pag"></div>
+    </div>
+
+    <!-- ── RESÚMENES ── -->
+    <div id="tab-resumenes" style="display:none">
+      <div class="section-header">
+        <h2>Resúmenes Guardados</h2>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <select id="res-vendedor" onchange="loadResumenes()" style="width:200px">
+            <option value="">Todos los vendedores</option>
+          </select>
+          <button class="btn btn-primary" onclick="openModalResumen()">+ Generar Resumen</button>
+        </div>
+      </div>
+      <div id="resumenes-list"></div>
+    </div>
+
+    <!-- ── ESTADÍSTICAS ── -->
+    <div id="tab-estadisticas" style="display:none">
+      <div class="section-header">
+        <h2>Estadísticas</h2>
+        <div style="display:flex;gap:10px;align-items:center">
+          <select id="est-vendedor" onchange="loadEstadisticas()" style="width:200px">
+            <option value="">Todos los vendedores</option>
+          </select>
+          <select id="est-anio" onchange="loadEstadisticas()"></select>
+        </div>
+      </div>
+      <div id="estadisticas-content"></div>
+    </div>
+
+    <!-- ── CONFIG ── -->
+    <div id="tab-config" style="display:none">
+      <div class="section-header"><h2>Configuración</h2></div>
+      <div class="card" style="max-width:500px">
+        <h3>🔑 Credenciales Xubio</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
+          Ingresá en Xubio → Configuración → Integraciones → API de Xubio → Nueva App Cliente
+        </p>
+        <div class="form-grid" style="grid-template-columns:1fr">
+          <div class="field">
+            <label>Client ID</label>
+            <input id="cfg-client-id" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+          </div>
+          <div class="field">
+            <label>Client Secret</label>
+            <input id="cfg-client-secret" type="password" placeholder="••••••••••••••••"/>
+          </div>
+        </div>
+        <div style="display:flex;gap:10px;margin-top:16px">
+          <button class="btn btn-primary" onclick="guardarConfig()">Guardar</button>
+          <button class="btn btn-secondary" onclick="testConexion()">Probar conexión</button>
+        </div>
+        <div id="cfg-result" style="margin-top:12px;font-size:12px"></div>
+      </div>
+
+      <div class="card" style="max-width:500px;margin-top:16px">
+        <h3>📊 Escala de Comisiones por Defecto</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:12px">
+          Se aplica a todos los vendedores que no tengan escala propia configurada.
+        </p>
+        <div id="default-escala-display"></div>
+      </div>
+
+      <div class="card" style="max-width:500px;margin-top:16px">
+        <h3>📋 Últimas Sincronizaciones</h3>
+        <div id="sync-log-list"></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toasts -->
+<div class="toast-cont" id="toasts"></div>
+
+<!-- Modal Vendedor -->
+<div class="modal-bg" id="modal-vendedor">
+  <div class="modal">
+    <h2 id="modal-v-title">Nuevo Vendedor</h2>
+    <input type="hidden" id="modal-v-id"/>
+    <div class="form-grid">
+      <div class="field" style="grid-column:1/-1">
+        <label>Nombre *</label>
+        <input id="v-nombre" type="text" placeholder="Nombre completo"/>
+      </div>
+      <div class="field">
+        <label>Email</label>
+        <input id="v-email" type="email" placeholder="vendedor@ejemplo.com"/>
+      </div>
+      <div class="field">
+        <label>Teléfono</label>
+        <input id="v-telefono" type="text" placeholder="+54 11 xxxxxx"/>
+      </div>
+    </div>
+    <div style="margin-top:16px">
+      <label style="font-size:12px;color:var(--muted);font-weight:500;display:block;margin-bottom:8px">
+        Escala de Comisiones
+      </label>
+      <p style="font-size:11px;color:var(--muted);margin-bottom:8px">
+        Si la dejás vacía se usa la escala por defecto. El % se aplica sobre el total cobrado neto sin IVA del mes.
+      </p>
+      <table class="escala-table">
+        <thead><tr>
+          <th>Desde ($)</th><th>Hasta ($)</th><th>%</th><th></th>
+        </tr></thead>
+        <tbody id="escala-rows"></tbody>
+      </table>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn-secondary btn-sm" onclick="addEscalaRow()">+ Tramo</button>
+        <button class="btn btn-secondary btn-sm" onclick="resetEscala()">↺ Usar por defecto</button>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-vendedor')">Cancelar</button>
+      <button class="btn btn-primary" onclick="guardarVendedor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Asignar Vendedor a Cliente -->
+<div class="modal-bg" id="modal-asignar">
+  <div class="modal">
+    <h2>Asignar Vendedor</h2>
+    <input type="hidden" id="asignar-cliente-id"/>
+    <p id="asignar-cliente-nombre" style="color:var(--muted);margin-bottom:16px;font-size:13px"></p>
+    <div class="field">
+      <label>Vendedor</label>
+      <select id="asignar-vendedor-sel">
+        <option value="">— Sin vendedor —</option>
+      </select>
+    </div>
+    <p style="font-size:11px;color:var(--muted);margin-top:10px">
+      Al asignar, todas las facturas futuras y pasadas sin vendedor de este cliente quedarán asignadas a este vendedor.
+    </p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-asignar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarAsignar()">Asignar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Resumen -->
+<div class="modal-bg" id="modal-resumen">
+  <div class="modal">
+    <h2>Generar Resumen</h2>
+    <div class="form-grid">
+      <div class="field">
+        <label>Mes</label>
+        <select id="res-mes">
+          <option value="1">Enero</option><option value="2">Febrero</option>
+          <option value="3">Marzo</option><option value="4">Abril</option>
+          <option value="5">Mayo</option><option value="6">Junio</option>
+          <option value="7">Julio</option><option value="8">Agosto</option>
+          <option value="9">Septiembre</option><option value="10">Octubre</option>
+          <option value="11">Noviembre</option><option value="12">Diciembre</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Año</label>
+        <select id="res-anio-sel"></select>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Vendedor (dejar vacío = todos)</label>
+        <select id="res-vendedor-sel">
+          <option value="">Todos los vendedores</option>
+        </select>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Notas</label>
+        <textarea id="res-notas" rows="2" placeholder="Notas opcionales..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-resumen')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarResumen()">Generar y Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Detalle Resumen -->
+<div class="modal-bg" id="modal-det-resumen">
+  <div class="modal" style="max-width:700px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <h2 id="det-title">Resumen</h2>
+      <button class="btn btn-secondary btn-sm" onclick="window.print()">🖨 Imprimir</button>
+    </div>
+    <div id="det-content"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-det-resumen')">Cerrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
+  'Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+let vendedoresList = [];
+let factPage = 1;
+let charts = {};
+const DEFAULT_ESCALA = [
+  {desde:0,hasta:5000000,porcentaje:5},
+  {desde:5000000,hasta:10000000,porcentaje:7},
+  {desde:10000000,hasta:20000000,porcentaje:9},
+  {desde:20000000,hasta:null,porcentaje:10},
+];
+let currentEscala = [];
+
+// ── Utils ────────────────────────────────────────────────────────────────────
+const $ = id => document.getElementById(id);
+const fmt = n => '$ ' + (n||0).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0});
+const fmtPct = p => (p||0).toFixed(1) + '%';
+
+async function api(path, opts={}) {
+  const r = await fetch('/api' + path, {
+    headers: {'Content-Type':'application/json'},
+    ...opts
+  });
+  if (!r.ok) {
+    const e = await r.json().catch(()=>({detail:r.statusText}));
+    throw new Error(e.detail || r.statusText);
+  }
+  return r.json();
+}
+
+function toast(msg, type='ok') {
+  const c = $('toasts');
+  const t = document.createElement('div');
+  t.className = 'toast ' + type;
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), 4000);
+}
+
+function openModal(id) { $(id).classList.add('open'); }
+function closeModal(id) { $(id).classList.remove('open'); }
+
+function initAnioPickers() {
+  const now = new Date();
+  const anio = now.getFullYear();
+  const ids = ['dash-anio','fact-anio','est-anio','res-anio-sel'];
+  ids.forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    el.innerHTML = '';
+    for (let y = anio; y >= anio-3; y--) {
+      el.innerHTML += `<option value="${y}">${y}</option>`;
+    }
+  });
+  const mes = now.getMonth() + 1;
+  const setVal = (id, val) => { if ($(id)) $(id).value = val; };
+  setVal('dash-mes', mes);
+  setVal('fact-mes', mes);
+  setVal('res-mes', mes);
+}
+
+// ── Tabs ──────────────────────────────────────────────────────────────────────
+function showTab(name) {
+  document.querySelectorAll('[id^="tab-"]').forEach(el => el.style.display = 'none');
+  $('tab-' + name).style.display = '';
+  document.querySelectorAll('nav button').forEach((b,i) => b.classList.remove('active'));
+  const tabs = ['dashboard','vendedores','facturas','resumenes','estadisticas','config'];
+  const idx = tabs.indexOf(name);
+  document.querySelectorAll('nav button')[idx]?.classList.add('active');
+  if (name === 'dashboard')    loadDashboard();
+  if (name === 'vendedores')   loadVendedores();
+  if (name === 'facturas')     loadFacturas();
+  if (name === 'resumenes')    loadResumenes();
+  if (name === 'estadisticas') loadEstadisticas();
+  if (name === 'config')       loadConfig();
+}
+
+// ── Dashboard ─────────────────────────────────────────────────────────────────
+async function loadDashboard() {
+  const mes = $('dash-mes').value;
+  const anio = $('dash-anio').value;
+  try {
+    const d = await api(`/dashboard?mes=${mes}&anio=${anio}`);
+    const cont = $('dash-cards');
+    cont.innerHTML = '';
+
+    if (d.facturas_sin_vendedor > 0) {
+      $('dash-alerta').style.display = '';
+      $('dash-alerta').innerHTML =
+        `⚠️ Hay <strong>${d.facturas_sin_vendedor}</strong> factura(s) sin vendedor asignado en este período.
+         <a href="#" onclick="showTab('facturas');document.getElementById('fact-sin-vendedor').checked=true;loadFacturas();return false">
+         Ver facturas</a>`;
+    } else {
+      $('dash-alerta').style.display = 'none';
+    }
+
+    d.vendedores.forEach(v => {
+      const pct = v.porcentaje_aplicado;
+      const nextStr = v.proximo_tramo
+        ? `Faltan ${fmt(v.proximo_tramo.desde - v.total_cobrado_neto)} para el ${v.proximo_tramo.porcentaje}%`
+        : `✔ En el tramo máximo (${pct}%)`;
+
+      const saved = v.tiene_resumen_guardado
+        ? `<span class="pill pill-green">💾 Guardado</span>` : '';
+
+      cont.innerHTML += `
+      <div class="card">
+        <h3>${v.vendedor_nombre} ${saved}</h3>
+        <div class="label">Cobrado neto (${MESES[mes]})</div>
+        <div class="big fmt-currency">${fmt(v.total_cobrado_neto)}</div>
+        <div class="row">
+          <div>
+            <div class="label">Comisión</div>
+            <span style="font-size:18px;font-weight:700;color:var(--green)">${fmt(v.comision_calculada)}</span>
+          </div>
+          <div>
+            <div class="label">Tramo</div>
+            <span class="pill pill-purple">${fmtPct(pct)}</span>
+          </div>
+          <div>
+            <div class="label">Facturas</div>
+            <span style="color:var(--text)">${v.cant_facturas}</span>
+          </div>
+        </div>
+        <div class="next-tier">${nextStr}</div>
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="btn btn-secondary btn-sm" onclick="showTab('estadisticas');$('est-vendedor').value=${v.vendedor_id};loadEstadisticas()">
+            📊 Estadísticas
+          </button>
+          <button class="btn btn-green btn-sm" onclick="generarResumenVendedor(${v.vendedor_id},${mes},${anio})">
+            💾 ${v.tiene_resumen_guardado?'Actualizar':'Guardar'} Resumen
+          </button>
+        </div>
+      </div>`;
+    });
+
+    if (d.vendedores.length === 0) {
+      cont.innerHTML = '<div class="empty">No hay vendedores activos. <a href="#" onclick="showTab(\'vendedores\')">Agregar vendedor →</a></div>';
+    }
+
+    if (d.ultimo_sync) {
+      const fecha = new Date(d.ultimo_sync.fecha).toLocaleString('es-AR');
+      $('dash-sync-info').textContent =
+        `Última sync: ${fecha} · +${d.ultimo_sync.facturas_nuevas} nuevas · actualiz. ${d.ultimo_sync.facturas_actualizadas}`;
+    }
+  } catch(e) {
+    $('dash-cards').innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function generarResumenVendedor(vid, mes, anio) {
+  try {
+    await api(`/resumenes?vendedor_id=${vid}`, {
+      method:'POST',
+      body: JSON.stringify({mes:parseInt(mes), anio:parseInt(anio)})
+    });
+    toast(`Resumen de ${MESES[mes]} guardado`);
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function generarTodosResumenes() {
+  const mes = parseInt($('dash-mes').value);
+  const anio = parseInt($('dash-anio').value);
+  try {
+    const res = await api('/resumenes', {
+      method:'POST',
+      body: JSON.stringify({mes, anio})
+    });
+    toast(`Resúmenes guardados para ${res.length} vendedor(es) de ${MESES[mes]} ${anio}`);
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Vendedores ────────────────────────────────────────────────────────────────
+async function loadVendedores() {
+  try {
+    vendedoresList = await api('/vendedores');
+    populateVendedorSelects();
+    const cont = $('vendedores-list');
+    if (!vendedoresList.length) {
+      cont.innerHTML = '<div class="empty">No hay vendedores. Podés sincronizar con Xubio o agregar manualmente.</div>';
+      return;
+    }
+    cont.innerHTML = `
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Nombre</th><th>Email</th><th>Teléfono</th>
+        <th>Escala</th><th>Estado</th><th>Alta</th><th></th>
+      </tr></thead>
+      <tbody>
+      ${vendedoresList.map(v => `
+        <tr>
+          <td style="font-weight:600">${v.nombre}</td>
+          <td>${v.email||'—'}</td>
+          <td>${v.telefono||'—'}</td>
+          <td>${escalaResumen(v.escala_comision)}</td>
+          <td><span class="chip ${v.activo?'chip-active':'chip-inactive'}">${v.activo?'Activo':'Inactivo'}</span></td>
+          <td>${v.fecha_alta?.slice(0,10)||''}</td>
+          <td style="display:flex;gap:6px">
+            <button class="btn btn-secondary btn-sm" onclick='openModalVendedor(${JSON.stringify(v)})'>✏️</button>
+            <button class="btn btn-danger btn-sm" onclick="toggleActivo(${v.id},${v.activo?0:1})">${v.activo?'Desactivar':'Activar'}</button>
+          </td>
+        </tr>
+      `).join('')}
+      </tbody>
+    </table></div>`;
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function escalaResumen(escala) {
+  if (!escala || !escala.length) return '—';
+  return escala.map(t =>
+    `${fmt(t.desde).replace('$ ','').replace(/\./g,',')}→${t.hasta?fmt(t.hasta).replace('$ ','').replace(/\./g,','):'∞'}: ${t.porcentaje}%`
+  ).join(' | ');
+}
+
+function populateVendedorSelects() {
+  const opts = vendedoresList.filter(v=>v.activo).map(v =>
+    `<option value="${v.id}">${v.nombre}</option>`
+  ).join('');
+  ['fact-vendedor','asignar-vendedor-sel','res-vendedor-sel','res-vendedor'].forEach(id => {
+    const el = $(id);
+    if (!el) return;
+    const first = el.options[0];
+    el.innerHTML = '';
+    el.appendChild(first.cloneNode(true));
+    el.innerHTML += opts;
+  });
+  const estEl = $('est-vendedor');
+  if (estEl) {
+    const first = estEl.options[0];
+    estEl.innerHTML = '';
+    estEl.appendChild(first.cloneNode(true));
+    estEl.innerHTML += opts;
+  }
+}
+
+function openModalVendedor(v = null) {
+  $('modal-v-id').value = v?.id || '';
+  $('modal-v-title').textContent = v ? 'Editar Vendedor' : 'Nuevo Vendedor';
+  $('v-nombre').value = v?.nombre || '';
+  $('v-email').value = v?.email || '';
+  $('v-telefono').value = v?.telefono || '';
+  currentEscala = v?.escala_comision?.length ? [...v.escala_comision] : [...DEFAULT_ESCALA];
+  renderEscalaRows();
+  openModal('modal-vendedor');
+}
+
+function renderEscalaRows() {
+  $('escala-rows').innerHTML = currentEscala.map((t,i) => `
+    <tr>
+      <td><input type="number" value="${t.desde}" min="0" step="100000"
+          oninput="currentEscala[${i}].desde=+this.value" style="width:130px"/></td>
+      <td><input type="number" value="${t.hasta||''}" min="0" step="100000" placeholder="sin límite"
+          oninput="currentEscala[${i}].hasta=this.value?+this.value:null" style="width:130px"/></td>
+      <td><input type="number" value="${t.porcentaje}" min="0" max="100" step="0.5"
+          oninput="currentEscala[${i}].porcentaje=+this.value" style="width:70px"/></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeEscalaRow(${i})">✕</button></td>
+    </tr>
+  `).join('');
+}
+
+function addEscalaRow() {
+  const last = currentEscala[currentEscala.length-1];
+  currentEscala.push({desde: last?.hasta||0, hasta:null, porcentaje:0});
+  renderEscalaRows();
+}
+function removeEscalaRow(i) { currentEscala.splice(i,1); renderEscalaRows(); }
+function resetEscala() { currentEscala = [...DEFAULT_ESCALA]; renderEscalaRows(); }
+
+async function guardarVendedor() {
+  const id = $('modal-v-id').value;
+  const body = {
+    nombre: $('v-nombre').value.trim(),
+    email: $('v-email').value.trim(),
+    telefono: $('v-telefono').value.trim(),
+    escala_comision: currentEscala,
+  };
+  if (!body.nombre) { toast('El nombre es obligatorio', 'err'); return; }
+  try {
+    if (id) {
+      await api(`/vendedores/${id}`, {method:'PUT', body:JSON.stringify(body)});
+      toast('Vendedor actualizado');
+    } else {
+      await api('/vendedores', {method:'POST', body:JSON.stringify(body)});
+      toast('Vendedor creado');
+    }
+    closeModal('modal-vendedor');
+    loadVendedores();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function toggleActivo(id, activo) {
+  try {
+    await api(`/vendedores/${id}`, {method:'PUT', body:JSON.stringify({activo: activo===1})});
+    loadVendedores();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Facturas ──────────────────────────────────────────────────────────────────
+async function loadFacturas() {
+  const mes = $('fact-mes').value;
+  const anio = $('fact-anio').value;
+  const vid = $('fact-vendedor').value;
+  const sinV = $('fact-sin-vendedor').checked;
+  let url = `/facturas?page=${factPage}&limit=50`;
+  if (mes) url += `&mes=${mes}`;
+  if (anio) url += `&anio=${anio}`;
+  if (vid) url += `&vendedor_id=${vid}`;
+  if (sinV) url += `&sin_vendedor=true`;
+  try {
+    const d = await api(url);
+    const cont = $('facturas-table');
+    if (!d.items.length) {
+      cont.innerHTML = '<div class="empty">No hay facturas con estos filtros</div>';
+      $('fact-pag').innerHTML = '';
+      return;
+    }
+    cont.innerHTML = `
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Nro</th><th>Tipo</th><th>Fecha Emis.</th><th>Fecha Cobro</th>
+        <th>Cliente</th><th>Neto</th><th>Estado</th><th>Vendedor</th><th></th>
+      </tr></thead>
+      <tbody>
+      ${d.items.map(f => `
+        <tr>
+          <td>${f.numero||'—'}</td>
+          <td>${f.tipo||'—'}</td>
+          <td>${f.fecha_emision?.slice(0,10)||'—'}</td>
+          <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
+          <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${f.cliente_nombre||'—'}</td>
+          <td class="fmt-currency">${fmt(f.neto)}</td>
+          <td><span class="pill ${f.estado==='cobrada'||f.estado==='pagada'?'pill-green':'pill-yellow'}">${f.estado||'—'}</span></td>
+          <td>${f.vendedor_nombre||'<span style="color:var(--red)">Sin asignar</span>'}</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick="openAsignarDesdeFactura(${f.id},'${(f.cliente_id_xubio||'').replace(/'/g,"\\'")}','${(f.cliente_nombre||'').replace(/'/g,"\\'")}')">
+              👤
+            </button>
+          </td>
+        </tr>
+      `).join('')}
+      </tbody>
+    </table></div>`;
+
+    const pag = $('fact-pag');
+    pag.innerHTML = `
+      <span style="color:var(--muted);font-size:12px">${d.total} facturas</span>
+      <button class="pg" onclick="factPage=Math.max(1,factPage-1);loadFacturas()" ${factPage<=1?'disabled':''}>‹</button>
+      <span style="font-size:12px">Pág ${factPage}</span>
+      <button class="pg" onclick="factPage++;loadFacturas()" ${factPage*50>=d.total?'disabled':''}>›</button>`;
+  } catch(e) { toast(e.message,'err'); }
+}
+
+function openAsignarDesdeFactura(fid, clienteXubioId, clienteNombre) {
+  $('asignar-cliente-id').value = clienteXubioId;
+  $('asignar-cliente-nombre').textContent = `Cliente: ${clienteNombre}`;
+  $('asignar-vendedor-sel').dataset.facturaId = fid;
+  openModal('modal-asignar');
+}
+
+async function confirmarAsignar() {
+  const clienteId = $('asignar-cliente-id').value;
+  const vendedorId = $('asignar-vendedor-sel').value || null;
+  const facturaId = $('asignar-vendedor-sel').dataset.facturaId;
+  try {
+    if (clienteId) {
+      await api(`/clientes/${encodeURIComponent(clienteId)}/asignar`, {
+        method:'POST', body:JSON.stringify({vendedor_id: vendedorId ? parseInt(vendedorId) : null})
+      });
+      toast('Vendedor asignado al cliente y sus facturas');
+    } else if (facturaId) {
+      await api(`/facturas/${facturaId}/asignar-vendedor`, {
+        method:'POST', body:JSON.stringify({vendedor_id: vendedorId ? parseInt(vendedorId) : null})
+      });
+      toast('Vendedor asignado a la factura');
+    }
+    closeModal('modal-asignar');
+    loadFacturas();
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Resúmenes ─────────────────────────────────────────────────────────────────
+async function loadResumenes() {
+  const vid = $('res-vendedor').value;
+  let url = '/resumenes';
+  if (vid) url += `?vendedor_id=${vid}`;
+  try {
+    const data = await api(url);
+    const cont = $('resumenes-list');
+    if (!data.length) {
+      cont.innerHTML = '<div class="empty">No hay resúmenes guardados. Generá uno desde el Panel o con el botón +</div>';
+      return;
+    }
+    cont.innerHTML = `
+    <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>Vendedor</th><th>Período</th><th>Cobrado Neto</th>
+        <th>% Tramo</th><th>Comisión</th><th>Facturas</th><th>Guardado</th><th></th>
+      </tr></thead>
+      <tbody>
+      ${data.map(r => `
+        <tr>
+          <td style="font-weight:600">${r.vendedor_nombre}</td>
+          <td>${MESES[r.periodo_mes]} ${r.periodo_anio}</td>
+          <td class="fmt-currency">${fmt(r.total_cobrado_neto)}</td>
+          <td><span class="pill pill-purple">${fmtPct(r.porcentaje_aplicado)}</span></td>
+          <td class="fmt-currency" style="color:var(--green);font-weight:600">${fmt(r.comision_calculada)}</td>
+          <td>${r.cant_facturas}</td>
+          <td style="font-size:12px;color:var(--muted)">${r.fecha_generacion?.slice(0,16).replace('T',' ')||''}</td>
+          <td><button class="btn btn-secondary btn-sm" onclick="verResumen(${r.id})">👁</button></td>
+        </tr>
+      `).join('')}
+      </tbody>
+    </table></div>`;
+  } catch(e) { toast(e.message,'err'); }
+}
+
+function openModalResumen() {
+  const now = new Date();
+  $('res-mes').value = now.getMonth()+1;
+  $('res-anio-sel').value = now.getFullYear();
+  openModal('modal-resumen');
+}
+
+async function confirmarResumen() {
+  const mes = parseInt($('res-mes').value);
+  const anio = parseInt($('res-anio-sel').value);
+  const notas = $('res-notas').value;
+  const vid = $('res-vendedor-sel').value;
+  let url = '/resumenes';
+  if (vid) url += `?vendedor_id=${vid}`;
+  try {
+    const res = await api(url, {method:'POST', body:JSON.stringify({mes,anio,notas})});
+    toast(`${res.length} resumen(es) generados para ${MESES[mes]} ${anio}`);
+    closeModal('modal-resumen');
+    loadResumenes();
+  } catch(e) { toast(e.message,'err'); }
+}
+
+async function verResumen(id) {
+  try {
+    const r = await api(`/resumenes/${id}`);
+    $('det-title').textContent = `${r.vendedor_nombre} — ${MESES[r.periodo_mes]} ${r.periodo_anio}`;
+    const det = r.detalle_facturas || [];
+    $('det-content').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
+        <div>
+          <div class="label">Total Cobrado Neto</div>
+          <div style="font-size:22px;font-weight:700">${fmt(r.total_cobrado_neto)}</div>
+        </div>
+        <div>
+          <div class="label">Tramo aplicado</div>
+          <div style="font-size:22px;font-weight:700;color:var(--purple)">${fmtPct(r.porcentaje_aplicado)}</div>
+        </div>
+        <div>
+          <div class="label">Comisión a pagar</div>
+          <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(r.comision_calculada)}</div>
+        </div>
+        <div>
+          <div class="label">Facturas incluidas</div>
+          <div style="font-size:22px;font-weight:700">${r.cant_facturas}</div>
+        </div>
+      </div>
+      ${r.notas ? `<div style="background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px">${r.notas}</div>` : ''}
+      <div class="label" style="margin-bottom:8px">Detalle de facturas</div>
+      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+      <table>
+        <thead><tr><th>Nro</th><th>Fecha Cobro</th><th>Cliente</th><th>Neto</th></tr></thead>
+        <tbody>
+        ${det.map(f=>`
+          <tr>
+            <td>${f.numero||'—'}</td>
+            <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
+            <td>${f.cliente}</td>
+            <td class="fmt-currency">${fmt(f.neto)}</td>
+          </tr>
+        `).join('')}
+        </tbody>
+      </table></div>
+      <div style="font-size:11px;color:var(--muted);margin-top:12px">
+        Generado: ${r.fecha_generacion?.slice(0,16).replace('T',' ')||''}
+      </div>`;
+    openModal('modal-det-resumen');
+  } catch(e) { toast(e.message,'err'); }
+}
+
+// ── Estadísticas ──────────────────────────────────────────────────────────────
+async function loadEstadisticas() {
+  const vid = $('est-vendedor').value;
+  const anio = $('est-anio').value;
+  const cont = $('estadisticas-content');
+  cont.innerHTML = '<div class="empty">Cargando...</div>';
+
+  // Destroy existing charts
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+
+  try {
+    if (vid) {
+      await loadEstVendedor(vid, anio, cont);
+    } else {
+      await loadEstGeneral(anio, cont);
+    }
+  } catch(e) {
+    cont.innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`;
+  }
+}
+
+async function loadEstGeneral(anio, cont) {
+  const d = await api(`/estadisticas?anio=${anio}`);
+  const todosVendedores = [...new Set(d.ventas_por_mes.map(x=>x.vendedor))];
+  const mesesData = Array.from({length:12},(_,i)=>i+1);
+
+  const datasets = todosVendedores.map((nombre,idx) => {
+    const colores = ['#00d4ff','#7c3aed','#10b981','#f59e0b','#ef4444','#06b6d4'];
+    const col = colores[idx % colores.length];
+    return {
+      label: nombre,
+      data: mesesData.map(m => {
+        const row = d.ventas_por_mes.find(r=>r.vendedor===nombre && r.mes===m);
+        return row?.total_neto || 0;
+      }),
+      borderColor: col,
+      backgroundColor: col + '22',
+      fill: false,
+      tension: .3,
+    };
+  });
+
+  cont.innerHTML = `
+  <div class="cards" style="grid-template-columns:repeat(auto-fill,minmax(220px,1fr));margin-bottom:24px">
+  ${d.ytd_por_vendedor.map(v=>`
+    <div class="card">
+      <h3 style="font-size:13px">${v.vendedor}</h3>
+      <div class="label">YTD Cobrado</div>
+      <div class="big" style="font-size:20px">${fmt(v.total_neto)}</div>
+      <div class="row">
+        <div><div class="label">Comisión est.</div><span style="color:var(--green)">${fmt(v.comision_estimada)}</span></div>
+        <div><div class="label">Tramo</div><span class="pill pill-purple">${fmtPct(v.porcentaje_estimado)}</span></div>
+      </div>
+    </div>
+  `).join('')}
+  </div>
+  <div class="card">
+    <h3>Ventas Mensuales ${anio}</h3>
+    <canvas id="chart-general" height="80"></canvas>
+  </div>
+  <div class="card" style="margin-top:16px">
+    <h3>Comisiones Guardadas ${anio}</h3>
+    <canvas id="chart-comisiones" height="80"></canvas>
+  </div>`;
+
+  if (datasets.length) {
+    charts.general = new Chart($('chart-general'), {
+      type:'line',
+      data:{labels:MESES.slice(1), datasets},
+      options:{responsive:true,scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString('es-AR')}}},plugins:{legend:{labels:{color:'#94a3b8'}}}}
+    });
+  }
+
+  if (d.historial_comisiones.length) {
+    const vNames = [...new Set(d.historial_comisiones.map(x=>x.vendedor))];
+    const colores = ['#00d4ff','#7c3aed','#10b981','#f59e0b','#ef4444'];
+    charts.comisiones = new Chart($('chart-comisiones'), {
+      type:'bar',
+      data:{
+        labels:MESES.slice(1),
+        datasets: vNames.map((n,i)=>({
+          label:n,
+          backgroundColor: colores[i%colores.length]+'99',
+          data: Array.from({length:12},(_,mi)=>{
+            const r = d.historial_comisiones.find(x=>x.vendedor===n && x.periodo_mes===mi+1);
+            return r?.comision_calculada||0;
+          })
+        }))
+      },
+      options:{responsive:true,scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString('es-AR')}}},plugins:{legend:{labels:{color:'#94a3b8'}}}}
+    });
+  }
+}
+
+async function loadEstVendedor(vid, anio, cont) {
+  const d = await api(`/estadisticas/${vid}?anio=${anio}`);
+  const v = d.vendedor;
+  const meses = d.mensual;
+
+  cont.innerHTML = `
+  <div class="cards">
+    <div class="card">
+      <div class="label">Vendedor</div>
+      <div style="font-size:18px;font-weight:700">${v.nombre}</div>
+    </div>
+    <div class="card">
+      <div class="label">YTD Cobrado ${anio}</div>
+      <div class="big">${fmt(meses.reduce((a,m)=>a+(m.total_neto||0),0))}</div>
+    </div>
+    <div class="card">
+      <div class="label">Comisión estimada YTD</div>
+      <div class="big" style="color:var(--green)">${fmt(meses.reduce((a,m)=>a+(m.comision_estimada||0),0))}</div>
+    </div>
+  </div>
+
+  <div style="display:grid;grid-template-columns:2fr 1fr;gap:16px;margin-top:16px">
+    <div class="card">
+      <h3>Ventas Mensuales ${anio}</h3>
+      <canvas id="chart-v-mensual" height="80"></canvas>
+    </div>
+    <div class="card">
+      <h3>Top 10 Clientes</h3>
+      <div style="overflow-y:auto;max-height:280px">
+      ${d.top_clientes.map((c,i)=>`
+        <div style="display:flex;justify-content:space-between;padding:6px 0;border-top:${i?'1px solid var(--border)':''}">
+          <span style="font-size:12px;overflow:hidden;text-overflow:ellipsis;max-width:60%">${c.cliente_nombre}</span>
+          <span class="fmt-currency" style="font-size:12px;color:var(--cyan)">${fmt(c.total_neto)}</span>
+        </div>
+      `).join('')}
+      </div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h3>Escala de Comisiones</h3>
+    <div class="tier-bar">
+    ${(v.escala_comision||[]).map(t=>`
+      <div class="tier-row">
+        <span class="tier-label">${fmt(t.desde)} → ${t.hasta?fmt(t.hasta):'∞'}</span>
+        <div class="tier-track"><div class="tier-fill" style="width:${t.porcentaje*10}%"></div></div>
+        <span class="tier-pct">${t.porcentaje}%</span>
+      </div>
+    `).join('')}
+    </div>
+  </div>`;
+
+  if (meses.length) {
+    charts.vMensual = new Chart($('chart-v-mensual'), {
+      type:'bar',
+      data:{
+        labels: meses.map(m=>m.mes_nombre),
+        datasets:[
+          {label:'Cobrado Neto',data:meses.map(m=>m.total_neto||0),
+           backgroundColor:'#00d4ff44',borderColor:'#00d4ff',borderWidth:2,yAxisID:'y'},
+          {label:'Comisión',data:meses.map(m=>m.comision_estimada||0),
+           backgroundColor:'#10b98144',borderColor:'#10b981',borderWidth:2,type:'line',yAxisID:'y'}
+        ]
+      },
+      options:{
+        responsive:true,
+        scales:{y:{ticks:{callback:v=>'$'+v.toLocaleString('es-AR')}}},
+        plugins:{legend:{labels:{color:'#94a3b8'}}}
+      }
+    });
+  }
+}
+
+// ── Configuración ─────────────────────────────────────────────────────────────
+async function loadConfig() {
+  try {
+    const cfg = await api('/config');
+    $('cfg-client-id').value = cfg.xubio_client_id || '';
+    if (cfg.xubio_configurado) {
+      $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Xubio configurado</span>';
+    }
+    // Default escala display
+    $('default-escala-display').innerHTML = `
+    <div class="tier-bar">
+    ${DEFAULT_ESCALA.map(t=>`
+      <div class="tier-row">
+        <span class="tier-label">${fmt(t.desde)} → ${t.hasta?fmt(t.hasta):'∞'}</span>
+        <div class="tier-track"><div class="tier-fill" style="width:${t.porcentaje*10}%"></div></div>
+        <span class="tier-pct">${t.porcentaje}%</span>
+      </div>
+    `).join('')}
+    </div>`;
+  } catch(e) {}
+
+  try {
+    const logs = await api('/sync-log?limit=10');
+    $('sync-log-list').innerHTML = logs.length ? `
+    <div class="tbl-wrap" style="margin-top:12px">
+    <table>
+      <thead><tr><th>Fecha</th><th>Nuevas</th><th>Actualiz.</th><th>Estado</th></tr></thead>
+      <tbody>
+      ${logs.map(l=>`
+        <tr>
+          <td style="font-size:12px">${l.fecha?.slice(0,16).replace('T',' ')||''}</td>
+          <td>+${l.facturas_nuevas}</td>
+          <td>~${l.facturas_actualizadas}</td>
+          <td><span class="pill ${l.estado==='ok'?'pill-green':'pill-yellow'}">${l.estado}</span></td>
+        </tr>
+      `).join('')}
+      </tbody>
+    </table></div>` : '<div class="empty">Sin sincronizaciones</div>';
+  } catch(e) {}
+}
+
+async function guardarConfig() {
+  const cid = $('cfg-client-id').value.trim();
+  const sec = $('cfg-client-secret').value.trim();
+  try {
+    await api('/config', {method:'POST', body:JSON.stringify({
+      xubio_client_id: cid || undefined,
+      xubio_client_secret: sec || undefined,
+    })});
+    toast('Configuración guardada');
+    $('cfg-client-secret').value = '';
+    $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Guardado</span>';
+  } catch(e) { toast(e.message,'err'); }
+}
+
+async function testConexion() {
+  try {
+    const r = await api('/config/test', {method:'POST'});
+    if (r.ok) {
+      toast('Conexión exitosa con Xubio');
+      $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Conexión OK</span>';
+    } else {
+      toast('Error: ' + r.error, 'err');
+      $('cfg-result').innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`;
+    }
+  } catch(e) { toast(e.message,'err'); }
+}
+
+// ── Sincronización ────────────────────────────────────────────────────────────
+async function sincronizar() {
+  $('sync-icon').innerHTML = '<span class="spin"></span>';
+  $('sync-status').textContent = 'Sincronizando...';
+  try {
+    const r = await api('/sincronizar', {method:'POST'});
+    toast(`Sync OK · +${r.facturas_nuevas} fact. · ${r.vendedores_nuevos} vendedores nuevos`);
+    $('sync-status').textContent = `Última: ${new Date().toLocaleTimeString('es-AR')}`;
+    loadDashboard();
+    if (vendedoresList.length !== await api('/vendedores').then(v=>v.length)) {
+      loadVendedores();
+    }
+  } catch(e) {
+    toast(e.message, 'err');
+    $('sync-status').textContent = 'Error en sync';
+  } finally {
+    $('sync-icon').textContent = '⟳';
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  initAnioPickers();
+  try {
+    vendedoresList = await api('/vendedores');
+    populateVendedorSelects();
+  } catch(e) {}
+  loadDashboard();
+})();
+</script>
+</body>
+</html>
