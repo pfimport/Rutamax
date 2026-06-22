@@ -37,15 +37,19 @@ FIELD_MAP_VENDEDOR = {
 }
 
 FIELD_MAP_COBRANZA = {
-    "id":                  ["id", "idcobranza", "cobranza_id", "id_recibo", "idrecibo",
-                            "numerocobranza", "nrocobranza", "numero"],
+    # numeroRecibo confirmed from Xubio API docs; also try legacy field names
+    "id":                  ["numeroRecibo", "id", "idcobranza", "cobranza_id", "id_recibo",
+                            "idrecibo", "numerocobranza", "nrocobranza", "numero"],
     "fecha":               ["fecha", "fecha_cobro", "fecha_cobranza", "fecha_recibo", "fechacobro"],
-    # Xubio links cobranza → invoice by the human-readable invoice NUMBER (e.g. "A-00001-00004567")
-    # The import template calls this field "Número de comprobante" / "Aplicación"
-    "numero_comprobante":  ["aplicacion", "aplicaciones", "numero_comprobante", "nrocomprobante",
-                            "comprobante", "numerocomprobante", "nrocomprobanteaplicado",
+    # The field linking cobranza → invoice is still unconfirmed from docs;
+    # try all likely names (flat string, list, or nested object handled in get_cobranzas)
+    "numero_comprobante":  ["aplicacion", "aplicaciones", "comprobantesAplicados",
+                            "numero_comprobante", "nrocomprobante", "comprobante",
+                            "numerocomprobante", "nrocomprobanteaplicado",
                             "comprobante_id", "id_comprobante", "idcomprobante"],
-    "cliente_nombre":      ["cliente", "nombre_cliente", "nombrecliente", "razonsocial"],
+    # cliente is a nested object in cobranzaBean: {ID, nombre, codigo, id}
+    # handled specially in get_cobranzas(); these are fallback flat-field names
+    "cliente_nombre":      ["nombre_cliente", "nombrecliente", "razonsocial", "cliente"],
     "cliente_id":          ["cliente_id", "idcliente", "id_cliente"],
     "monto":               ["importe", "monto", "total", "monto_cobrado", "importetotal"],
 }
@@ -264,22 +268,45 @@ class XubioClient:
         )
         items = []
         for c in raw:
-            fecha_raw  = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
-            # The link is by invoice number ("Aplicación" in Xubio's model, e.g. "A-00001-00004567")
-            # It may be a string, a list, or a nested object
+            fecha_raw = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
+
+            # cobranzaBean returns cliente as a nested object: {ID, nombre, codigo, id}
+            cliente_obj = c.get("cliente")
+            if isinstance(cliente_obj, dict):
+                cliente_nombre = (cliente_obj.get("nombre") or
+                                  _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], ""))
+                cliente_id = str(cliente_obj.get("ID") or cliente_obj.get("id") or
+                                 _extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or "")
+            else:
+                cliente_nombre = _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], "")
+                cliente_id = str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or "")
+
+            # Invoice link: may be a flat string, a list, or a nested object.
+            # Also check comprobantesAplicados (list of applied invoices).
             nro_comp = _extract(c, FIELD_MAP_COBRANZA["numero_comprobante"], "")
             if isinstance(nro_comp, list):
                 nro_comp = nro_comp[0] if nro_comp else ""
             if isinstance(nro_comp, dict):
-                nro_comp = (nro_comp.get("numero") or nro_comp.get("id")
-                            or nro_comp.get("idcomprobante") or "")
+                nro_comp = (nro_comp.get("numero") or nro_comp.get("nro") or
+                            nro_comp.get("id") or nro_comp.get("idcomprobante") or "")
+            # If still empty, try comprobantesAplicados list
+            if not nro_comp:
+                aplicados = c.get("comprobantesAplicados", c.get("comprobantes", []))
+                if isinstance(aplicados, list) and aplicados:
+                    first = aplicados[0]
+                    if isinstance(first, dict):
+                        nro_comp = (first.get("numero") or first.get("nrocomprobante") or
+                                    first.get("numerocomprobante") or first.get("id") or "")
+                    else:
+                        nro_comp = str(first)
+
             items.append({
-                "xubio_id":          str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
-                "fecha":             _parse_fecha(str(fecha_raw)),
+                "xubio_id":           str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
+                "fecha":              _parse_fecha(str(fecha_raw)),
                 "numero_comprobante": str(nro_comp or "").strip(),
-                "cliente_nombre":    _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], ""),
-                "cliente_id":        str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or ""),
-                "monto":             float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
+                "cliente_nombre":     cliente_nombre,
+                "cliente_id":         cliente_id,
+                "monto":              float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
             })
         total_c = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
         return {"items": items, "total": total_c, "page": page}

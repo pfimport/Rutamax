@@ -897,6 +897,39 @@ def test_conexion_xubio():
     return xubio.test_connection()
 
 
+@app.get("/api/debug/xubio")
+def debug_xubio_raw(recurso: str = "cobranzaBean", fecha_desde: str = None, fecha_hasta: str = None):
+    """Return raw Xubio API response for a given resource (for debugging field names)."""
+    xubio = get_xubio()
+    from datetime import date
+    today = date.today()
+    if not fecha_desde:
+        fecha_desde = f"{today.year}-{today.month:02d}-01"
+    if not fecha_hasta:
+        fecha_hasta = today.isoformat()
+
+    def fmt_ar(d):
+        parts = d.split("-")
+        return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+
+    try:
+        raw = xubio._get(recurso, {
+            "fechaDesde": fmt_ar(fecha_desde),
+            "fechaHasta": fmt_ar(fecha_hasta),
+            "pagina": 1,
+            "pageSize": 3,
+        })
+    except Exception as e:
+        return {"error": str(e), "recurso": recurso}
+    # Return first few items so we can see the field names
+    items = raw if isinstance(raw, list) else raw.get("data", raw.get("items", [raw] if isinstance(raw, dict) else []))
+    return {
+        "recurso": recurso,
+        "total_keys_top_level": list(raw.keys()) if isinstance(raw, dict) else "list",
+        "primeros_items": items[:3] if isinstance(items, list) else items,
+    }
+
+
 # ── Frontend ──────────────────────────────────────────────────────────────────
 
 @app.get("/", response_class=HTMLResponse)
