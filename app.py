@@ -833,9 +833,58 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                     break
                 page += 1
 
-            # Note: payment status is now determined directly from each invoice's
-            # transaccionCobranzaItems field (fetched in get_comprobantes), so no
-            # separate cobranza sync is needed.
+        # 3. Apply cobranzas to mark invoices as paid
+        # cobranzaBean without params returns all cobranzas; we filter by date in Python.
+        # For each cobranza we look for direct invoice_ids first, then fall back to
+        # client+date matching (all unpaid invoices for that client emitted before payment date).
+        try:
+            last_delta = meses_atras - 1
+            m0 = (now.month - last_delta - 1) % 12 + 1
+            a0 = now.year - ((now.month - last_delta - 1) // 12)
+            global_fd = f"{a0}-{m0:02d}-01"
+            global_fh = now.date().isoformat()
+
+            cob_resp = xubio.get_cobranzas(fecha_desde=global_fd, fecha_hasta=global_fh)
+            for cob in cob_resp["items"]:
+                fecha_cobro = cob["fecha"]
+                if not fecha_cobro:
+                    continue
+                try:
+                    dt_c = datetime.fromisoformat(fecha_cobro)
+                    cob_mes, cob_anio = dt_c.month, dt_c.year
+                except Exception:
+                    continue
+
+                if cob["invoice_ids"]:
+                    # Direct match: cobranzaBean/{id} told us exactly which invoices
+                    for inv_xubio_id in cob["invoice_ids"]:
+                        r = conn.execute(
+                            """UPDATE facturas SET estado='cobrada', fecha_cobro=?,
+                               periodo_cobro_mes=?, periodo_cobro_anio=?
+                               WHERE xubio_id=? AND estado NOT IN ('cobrada','pagada')""",
+                            (fecha_cobro, cob_mes, cob_anio, inv_xubio_id),
+                        )
+                        stats["cobranzas_aplicadas"] += r.rowcount
+                elif cob["cliente_id"]:
+                    # Fallback: match all unpaid invoices for this client emitted on or before
+                    # the cobranza date (typical pattern: client pays all outstanding at once)
+                    r = conn.execute(
+                        """UPDATE facturas SET estado='cobrada', fecha_cobro=?,
+                           periodo_cobro_mes=?, periodo_cobro_anio=?
+                           WHERE cliente_id_xubio=?
+                             AND estado NOT IN ('cobrada','pagada')
+                             AND tipo NOT LIKE '%Nota de Cr%'
+                             AND fecha_emision <= ?""",
+                        (fecha_cobro, cob_mes, cob_anio, cob["cliente_id"], fecha_cobro),
+                    )
+                    stats["cobranzas_aplicadas"] += r.rowcount
+
+            detalles.append(
+                f"Cobranzas: {len(cob_resp['items'])} procesadas, "
+                f"{stats['cobranzas_aplicadas']} facturas marcadas cobradas"
+            )
+        except Exception as e:
+            detalles.append(f"Warn cobranzas: {e}")
 
         conn.execute(
             """INSERT INTO sync_log (fecha, facturas_nuevas, facturas_actualizadas,

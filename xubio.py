@@ -339,81 +339,77 @@ class XubioClient:
 
     # ── Cobranzas ────────────────────────────────────────────────────────────
 
-    def get_cobranzas(self, fecha_desde: str, fecha_hasta: str, page: int = 1) -> dict:
-        def fmt_ar(d):
-            parts = d.split("-")
-            return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+    def get_cobranzas(self, fecha_desde: str = None, fecha_hasta: str = None) -> dict:
+        """Fetch cobranzas from Xubio.
 
-        fd_ar = fmt_ar(fecha_desde)
-        fh_ar = fmt_ar(fecha_hasta)
+        CONFIRMED: cobranzaBean works WITHOUT date params (148 records returned).
+        With date params it returns 404 — so we fetch everything and filter in Python.
+        For each cobranza we try cobranzaBean/{id} to find which invoice IDs it applies.
+        """
+        try:
+            data = self._get("cobranzaBean")
+        except Exception as e:
+            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {e}")
 
-        # cobranzaBean returns 404; try all known Xubio cobranza endpoint variants
-        attempts = [
-            ("cobranza",                {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("reciboDeCobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ReciboDeCobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("recibo",                  {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("cobranzaBean",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("OrdenDeCobro",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ordenDeCobro",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("Cobranza",                {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ReciboCobro",             {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-        ]
-        last_err = None
-        for endpoint, params in attempts:
-            try:
-                data = self._get(endpoint, params)
-                break
-            except Exception as e:
-                last_err = e
-                continue
-        else:
-            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {last_err}")
+        raw = data if isinstance(data, list) else data.get("data", data.get("cobranzas", []))
 
-        raw = data if isinstance(data, list) else data.get(
-            "data", data.get("cobranzas", data.get("cobros", data.get("recibos", [])))
-        )
         items = []
         for c in raw:
-            fecha_raw = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
+            # cobranzaBean returns dates as ISO datetime: "2026-06-19T03:00:00.000+00:00"
+            fecha_raw = str(c.get("fecha", "") or "")
+            fecha = _parse_fecha(fecha_raw[:10])  # first 10 chars = YYYY-MM-DD
 
-            # cobranzaBean returns cliente as a nested object: {ID, nombre, codigo, id}
-            cliente_obj = c.get("cliente")
+            # Client-side date filter (API doesn't support it)
+            if fecha_desde and fecha and fecha < fecha_desde:
+                continue
+            if fecha_hasta and fecha and fecha > fecha_hasta:
+                continue
+
+            cob_id = str(c.get("transaccionid", "") or "")
+            cliente_obj = c.get("cliente", {})
             if isinstance(cliente_obj, dict):
-                cliente_nombre = (cliente_obj.get("nombre") or
-                                  _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], ""))
-                cliente_id = str(cliente_obj.get("ID") or cliente_obj.get("id") or
-                                 _extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or "")
+                cliente_id = str(cliente_obj.get("ID") or cliente_obj.get("id") or "")
+                cliente_nombre = cliente_obj.get("nombre", "")
             else:
-                cliente_nombre = _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], "")
-                cliente_id = str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or "")
+                cliente_id = ""
+                cliente_nombre = ""
 
-            # Invoice link: may be a flat string, a list, or a nested object.
-            # Also check comprobantesAplicados (list of applied invoices).
-            nro_comp = _extract(c, FIELD_MAP_COBRANZA["numero_comprobante"], "")
-            if isinstance(nro_comp, list):
-                nro_comp = nro_comp[0] if nro_comp else ""
-            if isinstance(nro_comp, dict):
-                nro_comp = (nro_comp.get("numero") or nro_comp.get("nro") or
-                            nro_comp.get("id") or nro_comp.get("idcomprobante") or "")
-            # If still empty, try comprobantesAplicados list
-            if not nro_comp:
-                aplicados = c.get("comprobantesAplicados", c.get("comprobantes", []))
-                if isinstance(aplicados, list) and aplicados:
-                    first = aplicados[0]
-                    if isinstance(first, dict):
-                        nro_comp = (first.get("numero") or first.get("nrocomprobante") or
-                                    first.get("numerocomprobante") or first.get("id") or "")
-                    else:
-                        nro_comp = str(first)
+            # Fetch full cobranza detail to find which invoice IDs it applies
+            invoice_ids = []
+            if cob_id:
+                try:
+                    c_full = self._get(f"cobranzaBean/{cob_id}")
+                    for field in ("comprobantesAplicados", "transaccionComprobantes",
+                                  "aplicaciones", "comprobantes", "facturas",
+                                  "transaccionItems", "itemsAplicados", "items"):
+                        aplicados = c_full.get(field)
+                        if isinstance(aplicados, list) and aplicados:
+                            for ap in aplicados:
+                                if isinstance(ap, dict):
+                                    inv_id = (ap.get("transaccionid") or ap.get("transaccionId") or
+                                              ap.get("id") or ap.get("comprobante") or
+                                              ap.get("idcomprobante"))
+                                    if inv_id:
+                                        invoice_ids.append(str(inv_id))
+                            if invoice_ids:
+                                break
+                except Exception:
+                    pass
+
+            # Payment total from instrument records
+            instrumentos = c.get("transaccionInstrumentoDeCobro", [])
+            monto = sum(float(i.get("importe", 0) or 0) for i in instrumentos
+                        if isinstance(i, dict))
 
             items.append({
-                "xubio_id":           str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
-                "fecha":              _parse_fecha(str(fecha_raw)),
-                "numero_comprobante": str(nro_comp or "").strip(),
-                "cliente_nombre":     cliente_nombre,
-                "cliente_id":         cliente_id,
-                "monto":              float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
+                "xubio_id":    cob_id,
+                "fecha":       fecha,
+                "cliente_id":  cliente_id,
+                "cliente_nombre": cliente_nombre,
+                "monto":       monto,
+                "invoice_ids": invoice_ids,
+                "numero":      c.get("numeroRecibo", cob_id),
             })
-        total_c = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
-        return {"items": items, "total": total_c, "page": page}
+
+        total = data.get("total", len(raw)) if isinstance(data, dict) else len(raw)
+        return {"items": items, "total": total}
