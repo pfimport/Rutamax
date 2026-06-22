@@ -19,6 +19,13 @@ from xubio import XubioClient
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
+def _is_nota_credito(tipo: str) -> bool:
+    if not tipo:
+        return False
+    t = tipo.lower()
+    return "nota de cr" in t or t.startswith("nc ") or t == "nc" or "/nc" in t or "n.c." in t
+
+
 def get_xubio() -> XubioClient:
     client_id = get_config("xubio_client_id")
     client_secret = get_config("xubio_client_secret")
@@ -268,6 +275,16 @@ def agregar_factura_manual(body: FacturaManual):
     except Exception:
         mes, anio = now.month, now.year
 
+    # Notas de Crédito are stored with negative amounts so they reduce the commission base
+    if _is_nota_credito(body.tipo):
+        neto = -abs(body.neto)
+        iva  = -abs(body.iva)
+        estado = "cobrada"  # always include NC in summaries
+    else:
+        neto = body.neto
+        iva  = body.iva
+        estado = body.estado
+
     xubio_id = f"MANUAL-{body.numero}-{body.fecha_emision}"
     with get_conn() as conn:
         existing = conn.execute("SELECT id FROM facturas WHERE xubio_id = ?", (xubio_id,)).fetchone()
@@ -280,8 +297,8 @@ def agregar_factura_manual(body: FacturaManual):
                 estado, periodo_cobro_mes, periodo_cobro_anio, synced_at)
                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
             (xubio_id, body.numero, body.tipo, body.fecha_emision, body.fecha_cobro,
-             body.cliente_nombre, body.vendedor_id, body.neto, body.iva,
-             body.neto + body.iva, body.estado, mes, anio, now.isoformat()),
+             body.cliente_nombre, body.vendedor_id, neto, iva,
+             neto + iva, estado, mes, anio, now.isoformat()),
         )
         return {"id": cur.lastrowid, "ok": True}
 

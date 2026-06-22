@@ -390,6 +390,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
         <select id="mf-tipo">
           <option>Factura A</option><option>Factura B</option>
           <option>Factura C</option><option>Factura</option>
+          <option disabled>──────────────</option>
+          <option>Nota de Crédito A</option>
+          <option>Nota de Crédito B</option>
+          <option>Nota de Crédito C</option>
+          <option>Nota de Crédito</option>
         </select>
       </div>
       <div class="field">
@@ -409,7 +414,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
         <select id="mf-vendedor-sel"><option value="">— Sin vendedora —</option></select>
       </div>
       <div class="field">
-        <label>Importe NETO sin IVA ($) *</label>
+        <label>Importe NETO sin IVA ($) * — siempre positivo (el sistema lo resta si es NC)</label>
         <input id="mf-neto" type="number" min="0" step="0.01" placeholder="0.00"/>
       </div>
       <div class="field">
@@ -884,14 +889,19 @@ async function loadFacturas() {
         <th>Cliente</th><th>Neto</th><th>Estado</th><th>Vendedor</th><th></th>
       </tr></thead>
       <tbody>
-      ${d.items.map(f => `
-        <tr>
+      ${d.items.map(f => {
+        const esNC = f.neto < 0;
+        const rowStyle = esNC ? 'background:#ef444408' : '';
+        const netoStyle = esNC ? 'color:var(--red);font-weight:600' : '';
+        const tipoLabel = f.tipo || '—';
+        return `
+        <tr style="${rowStyle}">
           <td>${f.numero||'—'}</td>
-          <td>${f.tipo||'—'}</td>
+          <td>${tipoLabel}${esNC ? ' <span class="pill" style="background:#ef444422;color:var(--red);font-size:10px">NC</span>' : ''}</td>
           <td>${f.fecha_emision?.slice(0,10)||'—'}</td>
           <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${f.cliente_nombre||'—'}</td>
-          <td class="fmt-currency">${fmt(f.neto)}</td>
+          <td class="fmt-currency" style="${netoStyle}">${fmt(f.neto)}</td>
           <td><span class="pill ${f.estado==='cobrada'||f.estado==='pagada'?'pill-green':'pill-yellow'}">${f.estado||'—'}</span></td>
           <td>${f.vendedor_nombre||'<span style="color:var(--red)">Sin asignar</span>'}</td>
           <td>
@@ -899,8 +909,8 @@ async function loadFacturas() {
               👤
             </button>
           </td>
-        </tr>
-      `).join('')}
+        </tr>`;
+      }).join('')}
       </tbody>
     </table></div>`;
 

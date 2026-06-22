@@ -44,6 +44,13 @@ def _extract(obj: dict, field_map_entry: list, default=None):
     return default
 
 
+def _is_nota_credito(tipo: str) -> bool:
+    if not tipo:
+        return False
+    t = tipo.lower()
+    return "nota de cr" in t or t.startswith("nc ") or t == "nc" or "/nc" in t or "n.c." in t
+
+
 class XubioClient:
     def __init__(self, client_id: str, client_secret: str):
         self.client_id = client_id
@@ -151,22 +158,31 @@ class XubioClient:
         items = []
         for c in raw:
             estado = _extract(c, FIELD_MAP_COMPROBANTE["estado"], "emitida")
-            # Date for cobro period — use fecha_cobro if paid, else fecha_emision
             fecha_cobro = _extract(c, FIELD_MAP_COMPROBANTE["fecha_cobro"])
             fecha_emision = _extract(c, FIELD_MAP_COMPROBANTE["fecha_emision"], "")
+            tipo = _extract(c, FIELD_MAP_COMPROBANTE["tipo"], "")
+
+            neto  = float(_extract(c, FIELD_MAP_COMPROBANTE["neto"],  0) or 0)
+            iva   = float(_extract(c, FIELD_MAP_COMPROBANTE["iva"],   0) or 0)
+            total = float(_extract(c, FIELD_MAP_COMPROBANTE["total"], 0) or 0)
+
+            # Notas de Crédito reduce the commission base → store as negative
+            if _is_nota_credito(tipo):
+                neto, iva, total = -abs(neto), -abs(iva), -abs(total)
+                estado = "cobrada"  # ensure NCs are always included in summaries
 
             items.append({
-                "xubio_id":       str(_extract(c, FIELD_MAP_COMPROBANTE["id"], "")),
-                "numero":         _extract(c, FIELD_MAP_COMPROBANTE["numero"], ""),
-                "tipo":           _extract(c, FIELD_MAP_COMPROBANTE["tipo"], ""),
-                "fecha_emision":  fecha_emision,
-                "fecha_cobro":    fecha_cobro,
-                "estado":         estado,
-                "cliente_id":     str(_extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "")),
-                "cliente_nombre": _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], ""),
-                "neto":           float(_extract(c, FIELD_MAP_COMPROBANTE["neto"], 0) or 0),
-                "iva":            float(_extract(c, FIELD_MAP_COMPROBANTE["iva"], 0) or 0),
-                "total":          float(_extract(c, FIELD_MAP_COMPROBANTE["total"], 0) or 0),
+                "xubio_id":          str(_extract(c, FIELD_MAP_COMPROBANTE["id"], "")),
+                "numero":            _extract(c, FIELD_MAP_COMPROBANTE["numero"], ""),
+                "tipo":              tipo,
+                "fecha_emision":     fecha_emision,
+                "fecha_cobro":       fecha_cobro,
+                "estado":            estado,
+                "cliente_id":        str(_extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "")),
+                "cliente_nombre":    _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], ""),
+                "neto":              neto,
+                "iva":               iva,
+                "total":             total,
                 "vendedor_xubio_id": str(_extract(c, FIELD_MAP_COMPROBANTE["vendedor_id"], "") or ""),
             })
         total = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
