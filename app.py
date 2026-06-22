@@ -941,17 +941,63 @@ def debug_xubio_raw(recurso: str = "comprobanteVentaBean", fecha_desde: str = No
             "fechaDesde": fmt_ar(fecha_desde),
             "fechaHasta": fmt_ar(fecha_hasta),
             "pagina": 1,
-            "pageSize": 3,
+            "pageSize": 2,
         })
     except Exception as e:
         return {"error": str(e), "recurso": recurso}
-    # Return first few items so we can see the field names
+
     items = raw if isinstance(raw, list) else raw.get("data", raw.get("items", [raw] if isinstance(raw, dict) else []))
+    first = items[0] if isinstance(items, list) and items else items
+
     return {
         "recurso": recurso,
-        "total_keys_top_level": list(raw.keys()) if isinstance(raw, dict) else "list",
-        "primeros_items": items[:3] if isinstance(items, list) else items,
+        "keys_respuesta": list(raw.keys()) if isinstance(raw, dict) else f"lista de {len(raw)} items",
+        "keys_primer_item": list(first.keys()) if isinstance(first, dict) else "no es dict",
+        "primer_item_completo": first,
+        "segundo_item": items[1] if isinstance(items, list) and len(items) > 1 else None,
     }
+
+
+@app.get("/api/debug/xubio-id/{xubio_id}")
+def debug_xubio_por_id(xubio_id: str, recurso: str = "comprobanteVentaBean"):
+    """Fetch a single Xubio record by ID to see its full field set."""
+    xubio = get_xubio()
+    try:
+        raw = xubio._get(f"{recurso}/{xubio_id}")
+        return {
+            "recurso": f"{recurso}/{xubio_id}",
+            "keys": list(raw.keys()) if isinstance(raw, dict) else "lista",
+            "datos": raw,
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@app.get("/api/debug/xubio-endpoint")
+def debug_probar_endpoint(nombre: str, fecha_desde: str = None, fecha_hasta: str = None):
+    """Try an arbitrary Xubio endpoint by name and return its raw response."""
+    xubio = get_xubio()
+    from datetime import date
+    today = date.today()
+    fd = fecha_desde or f"{today.year}-{today.month:02d}-01"
+    fh = fecha_hasta or today.isoformat()
+
+    def fmt_ar(d):
+        parts = d.split("-")
+        return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+
+    try:
+        raw = xubio._get(nombre, {"fechaDesde": fmt_ar(fd), "fechaHasta": fmt_ar(fh), "pagina": 1, "pageSize": 2})
+        items = raw if isinstance(raw, list) else raw.get("data", raw.get("items", [raw] if isinstance(raw, dict) else []))
+        first = items[0] if isinstance(items, list) and items else items
+        return {
+            "ok": True, "endpoint": nombre,
+            "keys_respuesta": list(raw.keys()) if isinstance(raw, dict) else f"lista de {len(raw)} items",
+            "keys_primer_item": list(first.keys()) if isinstance(first, dict) else str(first)[:200],
+            "primer_item_completo": first,
+        }
+    except Exception as e:
+        return {"ok": False, "endpoint": nombre, "error": str(e)}
 
 
 # ── Frontend ──────────────────────────────────────────────────────────────────

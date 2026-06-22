@@ -292,12 +292,17 @@ class XubioClient:
         fd_ar = fmt_ar(fecha_desde)
         fh_ar = fmt_ar(fecha_hasta)
 
-        # Confirmed endpoint from Xubio API docs: "cobranzaBean"
+        # cobranzaBean returns 404; try all known Xubio cobranza endpoint variants
         attempts = [
-            ("cobranzaBean",    {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("cobranzaBean",    {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
-            ("Cobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ReciboCobro",     {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("cobranza",                {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("reciboDeCobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ReciboDeCobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("recibo",                  {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("cobranzaBean",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("OrdenDeCobro",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ordenDeCobro",            {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("Cobranza",                {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ReciboCobro",             {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
         ]
         last_err = None
         for endpoint, params in attempts:
