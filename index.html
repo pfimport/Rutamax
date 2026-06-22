@@ -458,6 +458,25 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
   </div>
 </div>
 
+<!-- Modal Cobrar Factura -->
+<div class="modal-bg" id="modal-cobrar">
+  <div class="modal" style="max-width:380px">
+    <h2>Marcar como Cobrada</h2>
+    <input type="hidden" id="cobrar-fid"/>
+    <div class="field" style="margin-top:16px">
+      <label>Fecha de cobro</label>
+      <input type="date" id="cobrar-fecha" style="width:100%"/>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin-top:8px">
+      El mes de la fecha elegida define en qué período se cuenta para la comisión.
+    </p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cobrar')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarCobrar()">Confirmar</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Resumen -->
 <div class="modal-bg" id="modal-resumen">
   <div class="modal">
@@ -894,6 +913,7 @@ async function loadFacturas() {
         const rowStyle = esNC ? 'background:#ef444408' : '';
         const netoStyle = esNC ? 'color:var(--red);font-weight:600' : '';
         const tipoLabel = f.tipo || '—';
+        const cobrada = f.estado==='cobrada'||f.estado==='pagada';
         return `
         <tr style="${rowStyle}">
           <td>${f.numero||'—'}</td>
@@ -902,12 +922,15 @@ async function loadFacturas() {
           <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${f.cliente_nombre||'—'}</td>
           <td class="fmt-currency" style="${netoStyle}">${fmt(f.neto)}</td>
-          <td><span class="pill ${f.estado==='cobrada'||f.estado==='pagada'?'pill-green':'pill-yellow'}">${f.estado||'—'}</span></td>
+          <td><span class="pill ${cobrada?'pill-green':'pill-yellow'}">${f.estado||'—'}</span></td>
           <td>${f.vendedor_nombre||'<span style="color:var(--red)">Sin asignar</span>'}</td>
-          <td>
-            <button class="btn btn-secondary btn-sm" onclick="openAsignarDesdeFactura(${f.id},'${(f.cliente_id_xubio||'').replace(/'/g,"\\'")}','${(f.cliente_nombre||'').replace(/'/g,"\\'")}')">
+          <td style="display:flex;gap:4px">
+            <button class="btn btn-secondary btn-sm" title="Asignar vendedor"
+              onclick="openAsignarDesdeFactura(${f.id},'${(f.cliente_id_xubio||'').replace(/'/g,"\\'")}','${(f.cliente_nombre||'').replace(/'/g,"\\'")}')">
               👤
             </button>
+            ${!cobrada && !esNC ? `<button class="btn btn-sm" style="background:#10b98133;color:var(--green);border:1px solid var(--green)" title="Marcar como cobrada"
+              onclick="abrirCobrar(${f.id},'${(f.fecha_emision||'').slice(0,10)}')">✓ Cobrar</button>` : ''}
           </td>
         </tr>`;
       }).join('')}
@@ -928,6 +951,29 @@ function openAsignarDesdeFactura(fid, clienteXubioId, clienteNombre) {
   $('asignar-cliente-nombre').textContent = `Cliente: ${clienteNombre}`;
   $('asignar-vendedor-sel').dataset.facturaId = fid;
   openModal('modal-asignar');
+}
+
+function abrirCobrar(fid, fechaEmision) {
+  $('cobrar-fid').value = fid;
+  // Default to today or emission date if in same month
+  const hoy = new Date().toISOString().slice(0,10);
+  $('cobrar-fecha').value = hoy;
+  openModal('modal-cobrar');
+}
+
+async function confirmarCobrar() {
+  const fid = $('cobrar-fid').value;
+  const fecha = $('cobrar-fecha').value;
+  if (!fecha) { toast('Ingresá la fecha de cobro','err'); return; }
+  try {
+    await api(`/facturas/${fid}/cobrar`, {
+      method:'POST', body: JSON.stringify({fecha_cobro: fecha})
+    });
+    toast('Factura marcada como cobrada');
+    closeModal('modal-cobrar');
+    loadFacturas();
+    loadDashboard();
+  } catch(e) { toast(e.message,'err'); }
 }
 
 async function confirmarAsignar() {

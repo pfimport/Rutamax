@@ -314,6 +314,30 @@ def asignar_vendedor_a_factura(fid: int, body: AsignarVendedor):
     return {"ok": True}
 
 
+class MarcarCobradaRequest(BaseModel):
+    fecha_cobro: str  # YYYY-MM-DD
+
+
+@app.post("/api/facturas/{fid}/cobrar")
+def marcar_cobrada(fid: int, body: MarcarCobradaRequest):
+    try:
+        dt = datetime.fromisoformat(body.fecha_cobro[:10])
+        mes, anio = dt.month, dt.year
+    except Exception:
+        raise HTTPException(400, "Fecha inválida, usar formato YYYY-MM-DD")
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM facturas WHERE id = ?", (fid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Factura no encontrada")
+        conn.execute(
+            """UPDATE facturas
+               SET estado='cobrada', fecha_cobro=?, periodo_cobro_mes=?, periodo_cobro_anio=?
+               WHERE id=?""",
+            (body.fecha_cobro[:10], mes, anio, fid),
+        )
+    return {"ok": True}
+
+
 # ── Pendientes (facturas sin vendedor) ───────────────────────────────────────
 
 @app.get("/api/pendientes")
