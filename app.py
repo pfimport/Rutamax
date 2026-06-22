@@ -771,16 +771,37 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                         periodo_mes, periodo_anio = m, a
 
                     existing = conn.execute(
-                        "SELECT id FROM facturas WHERE xubio_id = ?", (c["xubio_id"],)
+                        "SELECT id, estado, fecha_cobro, periodo_cobro_mes, periodo_cobro_anio FROM facturas WHERE xubio_id = ?",
+                        (c["xubio_id"],)
                     ).fetchone()
                     if existing:
+                        ex = dict(existing)
+                        # Never downgrade from cobrada/pagada to emitida:
+                        # if the API now says 'cobrada', take that (Xubio registered a payment).
+                        # if the API still says 'emitida' but we already marked it cobrada, keep it.
+                        if c["estado"] == "cobrada":
+                            est_final      = "cobrada"
+                            fc_final       = c["fecha_cobro"] or ex["fecha_cobro"]
+                            mes_final      = periodo_mes
+                            anio_final     = periodo_anio
+                        elif ex["estado"] in ("cobrada", "pagada"):
+                            est_final      = ex["estado"]
+                            fc_final       = ex["fecha_cobro"]
+                            mes_final      = ex["periodo_cobro_mes"]
+                            anio_final     = ex["periodo_cobro_anio"]
+                        else:
+                            est_final      = c["estado"]
+                            fc_final       = c["fecha_cobro"]
+                            mes_final      = periodo_mes
+                            anio_final     = periodo_anio
+
                         conn.execute(
                             """UPDATE facturas SET estado=?, fecha_cobro=?, neto=?, iva=?,
                                   total=?, vendedor_id=COALESCE(vendedor_id,?),
                                   periodo_cobro_mes=?, periodo_cobro_anio=?, synced_at=?
                                WHERE xubio_id=?""",
-                            (c["estado"], c["fecha_cobro"], c["neto"], c["iva"],
-                             c["total"], vendedor_id, periodo_mes, periodo_anio,
+                            (est_final, fc_final, c["neto"], c["iva"],
+                             c["total"], vendedor_id, mes_final, anio_final,
                              now.isoformat(), c["xubio_id"]),
                         )
                         stats["facturas_actualizadas"] += 1
