@@ -54,10 +54,11 @@ class XubioClient:
     def _ensure_token(self):
         if self._token and self._token_expiry and datetime.now() < self._token_expiry:
             return
+        # Xubio uses client_id + secret_id (not client_secret)
         resp = requests.post(TOKEN_URL, data={
             "grant_type": "client_credentials",
             "client_id": self.client_id,
-            "client_secret": self.client_secret,
+            "secret_id": self.client_secret,
         }, timeout=15)
         resp.raise_for_status()
         data = resp.json()
