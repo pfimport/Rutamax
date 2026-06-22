@@ -273,19 +273,33 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
     <!-- ── CONFIG ── -->
     <div id="tab-config" style="display:none">
       <div class="section-header"><h2>Configuración</h2></div>
+
+      <div id="cfg-primer-uso" style="display:none;background:#00d4ff11;border:1px solid var(--cyan);
+        border-radius:12px;padding:20px;max-width:560px;margin-bottom:20px">
+        <div style="font-size:15px;font-weight:700;color:var(--cyan);margin-bottom:10px">
+          👋 Primer uso — configurá la conexión con Xubio
+        </div>
+        <ol style="font-size:13px;color:var(--text);line-height:2;padding-left:18px">
+          <li>Abrí <strong>Xubio</strong> en tu navegador</li>
+          <li>Andá a <strong>Configuración → Integraciones → API de Xubio</strong></li>
+          <li>Hacé clic en <strong>"Nueva App Cliente"</strong></li>
+          <li>Poné cualquier nombre (ej: "Comisiones") y guardá</li>
+          <li>Copiá el <strong>Client_id</strong> y el <strong>Secret_id</strong> que aparecen</li>
+          <li>Pegálos acá abajo y hacé clic en <strong>Guardar</strong></li>
+        </ol>
+      </div>
+
       <div class="card" style="max-width:500px">
-        <h3>🔑 Credenciales Xubio</h3>
-        <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
-          Ingresá en Xubio → Configuración → Integraciones → API de Xubio → Nueva App Cliente
-        </p>
+        <h3>🔑 Conexión con Xubio</h3>
+        <div id="cfg-estado" style="margin-bottom:16px"></div>
         <div class="form-grid" style="grid-template-columns:1fr">
           <div class="field">
-            <label>Client ID</label>
-            <input id="cfg-client-id" type="text" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"/>
+            <label>Client ID (lo genera Xubio)</label>
+            <input id="cfg-client-id" type="text" placeholder="Pegá acá el Client_id de Xubio"/>
           </div>
           <div class="field">
-            <label>Client Secret</label>
-            <input id="cfg-client-secret" type="password" placeholder="••••••••••••••••"/>
+            <label>Secret ID (lo genera Xubio)</label>
+            <input id="cfg-client-secret" type="password" placeholder="Pegá acá el Secret_id de Xubio"/>
           </div>
         </div>
         <div style="display:flex;gap:10px;margin-top:16px">
@@ -1100,7 +1114,11 @@ async function loadConfig() {
     const cfg = await api('/config');
     $('cfg-client-id').value = cfg.xubio_client_id || '';
     if (cfg.xubio_configurado) {
-      $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Xubio configurado</span>';
+      $('cfg-primer-uso').style.display = 'none';
+      $('cfg-estado').innerHTML = '<span style="color:var(--green);font-size:13px">✔ Xubio conectado correctamente</span>';
+    } else {
+      $('cfg-primer-uso').style.display = '';
+      $('cfg-estado').innerHTML = '<span style="color:var(--yellow);font-size:13px">⚠ Todavía no configurado — seguí los pasos de arriba</span>';
     }
     // Default escala display
     $('default-escala-display').innerHTML = `
@@ -1138,26 +1156,32 @@ async function loadConfig() {
 async function guardarConfig() {
   const cid = $('cfg-client-id').value.trim();
   const sec = $('cfg-client-secret').value.trim();
+  if (!cid || !sec) {
+    toast('Completá los dos campos antes de guardar', 'err');
+    return;
+  }
   try {
     await api('/config', {method:'POST', body:JSON.stringify({
-      xubio_client_id: cid || undefined,
-      xubio_client_secret: sec || undefined,
+      xubio_client_id: cid,
+      xubio_client_secret: sec,
     })});
-    toast('Configuración guardada');
     $('cfg-client-secret').value = '';
-    $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Guardado</span>';
+    $('cfg-estado').innerHTML = '<span style="color:var(--green);font-size:13px">✔ Guardado — hacé clic en "Probar conexión" para verificar</span>';
+    $('cfg-primer-uso').style.display = 'none';
+    toast('Credenciales guardadas');
   } catch(e) { toast(e.message,'err'); }
 }
 
 async function testConexion() {
+  $('cfg-estado').innerHTML = '<span style="color:var(--muted);font-size:13px">Probando conexión...</span>';
   try {
     const r = await api('/config/test', {method:'POST'});
     if (r.ok) {
-      toast('Conexión exitosa con Xubio');
-      $('cfg-result').innerHTML = '<span style="color:var(--green)">✔ Conexión OK</span>';
+      toast('✔ Conexión exitosa con Xubio');
+      $('cfg-estado').innerHTML = '<span style="color:var(--green);font-size:13px">✔ Conexión con Xubio verificada. Ahora podés hacer clic en "Sincronizar Xubio"</span>';
     } else {
-      toast('Error: ' + r.error, 'err');
-      $('cfg-result').innerHTML = `<span style="color:var(--red)">✗ ${r.error}</span>`;
+      toast('Error de conexión: ' + r.error, 'err');
+      $('cfg-estado').innerHTML = `<span style="color:var(--red);font-size:13px">✗ Error: ${r.error} — verificá que los datos sean correctos</span>`;
     }
   } catch(e) { toast(e.message,'err'); }
 }
