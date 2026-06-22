@@ -941,12 +941,15 @@ def debug_xubio_raw(recurso: str = "comprobanteVentaBean", fecha_desde: str = No
 
 @app.get("/api/debug/cobranza-probe")
 def debug_cobranza_probe(fecha_desde: str = None, fecha_hasta: str = None):
-    """Try the /cobranza endpoint with multiple parameter combinations to find what works."""
+    """Try many cobranza endpoint variants to find what works. Does NOT stop at first success."""
     from datetime import date
     xubio = get_xubio()
     today = date.today()
     fd_iso = fecha_desde or f"{today.year}-{today.month:02d}-01"
     fh_iso = fecha_hasta or today.isoformat()
+
+    # Also try a wider range (last 6 months) in case there are no recent cobranzas
+    fd_wide = f"{today.year - 1 if today.month < 7 else today.year}-{(today.month - 6) % 12 + 1 or 6:02d}-01"
 
     def fmt_ar(d):
         parts = d.split("-")
@@ -954,18 +957,37 @@ def debug_cobranza_probe(fecha_desde: str = None, fecha_hasta: str = None):
 
     fd_ar = fmt_ar(fd_iso)
     fh_ar = fmt_ar(fh_iso)
+    fd_wide_ar = fmt_ar(fd_wide)
+
+    base_params = {"fechaDesde": fd_ar, "fechaHasta": fh_ar}
+    wide_params = {"fechaDesde": fd_wide_ar, "fechaHasta": fh_ar}
 
     combos = [
-        ("cobranza", {}),
-        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
-        ("cobranza", {"fechaDesde": fd_iso, "fechaHasta": fh_iso}),
-        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": 1, "pageSize": 10}),
-        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "page": 1, "limit": 10}),
-        ("cobranza", {"fecha": fd_ar}),
-        ("cobranzaBean", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
-        ("recibo", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
-        ("reciboDeCobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
-        ("ReciboDeCobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+        # Most likely names based on Xubio's Bean pattern and docs
+        ("cobranza",              {}),
+        ("cobranza",              base_params),
+        ("cobranza",              wide_params),
+        ("cobranzaBean",          {}),
+        ("cobranzaBean",          base_params),
+        ("reciboBean",            base_params),
+        ("reciboBean",            {}),
+        ("recibo",                base_params),
+        ("recibo",                {}),
+        ("reciboDeCobranza",      base_params),
+        ("ReciboDeCobranza",      base_params),
+        ("recibos",               base_params),
+        ("cobranzas",             base_params),
+        ("cobros",                base_params),
+        ("cobro",                 base_params),
+        ("pago",                  base_params),
+        ("pagos",                 base_params),
+        ("ordenDeCobro",          base_params),
+        ("OrdenDeCobro",          base_params),
+        ("ordenDeCobroBean",      base_params),
+        ("ReciboCobro",           base_params),
+        ("reciboCobranza",        base_params),
+        ("cobranzaVentaBean",     base_params),
+        ("transaccionCobranza",   base_params),
     ]
     results = []
     for endpoint, params in combos:
@@ -981,9 +1003,24 @@ def debug_cobranza_probe(fecha_desde: str = None, fecha_hasta: str = None):
                 "keys_primer_item": list(first.keys()) if isinstance(first, dict) else str(first)[:100],
                 "primer_item": first,
             })
-            break  # stop at first success
         except Exception as e:
-            results.append({"ok": False, "endpoint": endpoint, "params": params, "error": str(e)[:120]})
+            err = str(e)[:150]
+            results.append({"ok": False, "endpoint": endpoint, "params": params, "error": err})
+    return results
+
+
+@app.get("/api/debug/cobranza-id/{cobranza_id}")
+def debug_cobranza_por_id(cobranza_id: str):
+    """Try to fetch a cobranza by its ID directly, testing multiple endpoint variants."""
+    xubio = get_xubio()
+    results = []
+    for ep in ("cobranza", "cobranzaBean", "reciboBean", "recibo", "reciboDeCobranza",
+               "ReciboCobro", "ordenDeCobro"):
+        try:
+            raw = xubio._get(f"{ep}/{cobranza_id}")
+            results.append({"ok": True, "endpoint": f"{ep}/{cobranza_id}", "datos": raw})
+        except Exception as e:
+            results.append({"ok": False, "endpoint": f"{ep}/{cobranza_id}", "error": str(e)[:120]})
     return results
 
 
