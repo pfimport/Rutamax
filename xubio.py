@@ -37,13 +37,17 @@ FIELD_MAP_VENDEDOR = {
 }
 
 FIELD_MAP_COBRANZA = {
-    "id":             ["id", "idcobranza", "cobranza_id", "id_recibo", "idrecibo"],
-    "fecha":          ["fecha", "fecha_cobro", "fecha_cobranza", "fecha_recibo", "fechacobro"],
-    "comprobante_id": ["comprobante_id", "id_comprobante", "idcomprobante",
-                       "factura_id", "id_factura", "idfactura",
-                       "comprobante", "idcomprobanterelacionado"],
-    "cliente_id":     ["cliente_id", "idcliente", "id_cliente"],
-    "monto":          ["monto", "importe", "total", "monto_cobrado", "importetotal"],
+    "id":                  ["id", "idcobranza", "cobranza_id", "id_recibo", "idrecibo",
+                            "numerocobranza", "nrocobranza", "numero"],
+    "fecha":               ["fecha", "fecha_cobro", "fecha_cobranza", "fecha_recibo", "fechacobro"],
+    # Xubio links cobranza → invoice by the human-readable invoice NUMBER (e.g. "A-00001-00004567")
+    # The import template calls this field "Número de comprobante" / "Aplicación"
+    "numero_comprobante":  ["aplicacion", "aplicaciones", "numero_comprobante", "nrocomprobante",
+                            "comprobante", "numerocomprobante", "nrocomprobanteaplicado",
+                            "comprobante_id", "id_comprobante", "idcomprobante"],
+    "cliente_nombre":      ["cliente", "nombre_cliente", "nombrecliente", "razonsocial"],
+    "cliente_id":          ["cliente_id", "idcliente", "id_cliente"],
+    "monto":               ["importe", "monto", "total", "monto_cobrado", "importetotal"],
 }
 
 
@@ -62,6 +66,23 @@ def _parse_fecha(s: str) -> str:
     if len(parts) == 3:          # DD/MM/YYYY → YYYY-MM-DD
         return f"{parts[2]}-{parts[1]}-{parts[0]}"
     return s[:10]                # already YYYY-MM-DD (or trim time)
+
+
+# Xubio sometimes returns tipo as a numeric code (from import template: TIPO=1 → Factura A)
+_TIPO_CODES = {
+    "1": "Factura A", "2": "Factura B", "3": "Factura C", "4": "Factura M",
+    "5": "Nota de Débito A", "6": "Nota de Débito B", "7": "Nota de Débito C",
+    "8": "Nota de Crédito A", "9": "Nota de Crédito B", "10": "Nota de Crédito C",
+    "11": "Factura E", "12": "Nota de Crédito E", "13": "Nota de Débito E",
+    "51": "Factura A", "52": "Factura B", "53": "Factura C",
+}
+
+
+def _normalize_tipo(tipo) -> str:
+    if tipo is None:
+        return ""
+    s = str(tipo).strip()
+    return _TIPO_CODES.get(s, s)
 
 
 def _is_nota_credito(tipo: str) -> bool:
@@ -180,7 +201,7 @@ class XubioClient:
             estado = _extract(c, FIELD_MAP_COMPROBANTE["estado"], "emitida")
             fecha_cobro = _extract(c, FIELD_MAP_COMPROBANTE["fecha_cobro"])
             fecha_emision = _extract(c, FIELD_MAP_COMPROBANTE["fecha_emision"], "")
-            tipo = _extract(c, FIELD_MAP_COMPROBANTE["tipo"], "")
+            tipo = _normalize_tipo(_extract(c, FIELD_MAP_COMPROBANTE["tipo"], ""))
 
             neto  = float(_extract(c, FIELD_MAP_COMPROBANTE["neto"],  0) or 0)
             iva   = float(_extract(c, FIELD_MAP_COMPROBANTE["iva"],   0) or 0)
@@ -241,18 +262,22 @@ class XubioClient:
         )
         items = []
         for c in raw:
-            fecha_raw = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
-            comp_id   = _extract(c, FIELD_MAP_COBRANZA["comprobante_id"], "")
-            if isinstance(comp_id, list):
-                comp_id = comp_id[0] if comp_id else ""
-            if isinstance(comp_id, dict):
-                comp_id = comp_id.get("id") or comp_id.get("idcomprobante") or ""
+            fecha_raw  = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
+            # The link is by invoice number ("Aplicación" in Xubio's model, e.g. "A-00001-00004567")
+            # It may be a string, a list, or a nested object
+            nro_comp = _extract(c, FIELD_MAP_COBRANZA["numero_comprobante"], "")
+            if isinstance(nro_comp, list):
+                nro_comp = nro_comp[0] if nro_comp else ""
+            if isinstance(nro_comp, dict):
+                nro_comp = (nro_comp.get("numero") or nro_comp.get("id")
+                            or nro_comp.get("idcomprobante") or "")
             items.append({
-                "xubio_id":       str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
-                "fecha":          _parse_fecha(str(fecha_raw)),
-                "comprobante_id": str(comp_id or ""),
-                "cliente_id":     str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or ""),
-                "monto":          float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
+                "xubio_id":          str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
+                "fecha":             _parse_fecha(str(fecha_raw)),
+                "numero_comprobante": str(nro_comp or "").strip(),
+                "cliente_nombre":    _extract(c, FIELD_MAP_COBRANZA["cliente_nombre"], ""),
+                "cliente_id":        str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or ""),
+                "monto":             float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
             })
         total_c = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
         return {"items": items, "total": total_c, "page": page}
