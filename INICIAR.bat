@@ -16,6 +16,12 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
+REM -- Liberar puerto 8000 si esta ocupado --
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8000 "') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
+timeout /t 1 /nobreak >nul
+
 echo  Iniciando... aguarda unos segundos.
 echo.
 echo  El sistema se va a abrir automaticamente en tu navegador.
