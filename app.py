@@ -939,6 +939,54 @@ def debug_xubio_raw(recurso: str = "comprobanteVentaBean", fecha_desde: str = No
     }
 
 
+@app.get("/api/debug/cobranza-probe")
+def debug_cobranza_probe(fecha_desde: str = None, fecha_hasta: str = None):
+    """Try the /cobranza endpoint with multiple parameter combinations to find what works."""
+    from datetime import date
+    xubio = get_xubio()
+    today = date.today()
+    fd_iso = fecha_desde or f"{today.year}-{today.month:02d}-01"
+    fh_iso = fecha_hasta or today.isoformat()
+
+    def fmt_ar(d):
+        parts = d.split("-")
+        return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+
+    fd_ar = fmt_ar(fd_iso)
+    fh_ar = fmt_ar(fh_iso)
+
+    combos = [
+        ("cobranza", {}),
+        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+        ("cobranza", {"fechaDesde": fd_iso, "fechaHasta": fh_iso}),
+        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": 1, "pageSize": 10}),
+        ("cobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "page": 1, "limit": 10}),
+        ("cobranza", {"fecha": fd_ar}),
+        ("cobranzaBean", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+        ("recibo", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+        ("reciboDeCobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+        ("ReciboDeCobranza", {"fechaDesde": fd_ar, "fechaHasta": fh_ar}),
+    ]
+    results = []
+    for endpoint, params in combos:
+        try:
+            raw = xubio._get(endpoint, params or None)
+            items = raw if isinstance(raw, list) else raw.get("data", raw.get("items", [raw] if isinstance(raw, dict) else []))
+            first = items[0] if isinstance(items, list) and items else items
+            results.append({
+                "ok": True,
+                "endpoint": endpoint,
+                "params": params,
+                "total": len(raw) if isinstance(raw, list) else raw.get("total", "?"),
+                "keys_primer_item": list(first.keys()) if isinstance(first, dict) else str(first)[:100],
+                "primer_item": first,
+            })
+            break  # stop at first success
+        except Exception as e:
+            results.append({"ok": False, "endpoint": endpoint, "params": params, "error": str(e)[:120]})
+    return results
+
+
 @app.get("/api/debug/xubio-id/{xubio_id}")
 def debug_xubio_por_id(xubio_id: str, recurso: str = "comprobanteVentaBean"):
     """Fetch a single Xubio record by ID to see its full field set."""
