@@ -65,6 +65,18 @@ class AsignarVendedor(BaseModel):
     vendedor_id: Optional[int] = None  # None = quitar asignación
 
 
+class FacturaManual(BaseModel):
+    numero: str
+    fecha_emision: str          # YYYY-MM-DD
+    fecha_cobro: Optional[str] = None
+    cliente_nombre: str
+    vendedor_id: Optional[int] = None
+    neto: float
+    iva: float = 0.0
+    tipo: str = "Factura"
+    estado: str = "cobrada"
+
+
 class ConfigUpdate(BaseModel):
     xubio_client_id: Optional[str] = None
     xubio_client_secret: Optional[str] = None
@@ -237,6 +249,34 @@ def listar_facturas(
             f"SELECT COUNT(*) FROM facturas f {where}", params
         ).fetchone()[0]
     return {"items": rows_to_list(rows), "total": total, "page": page}
+
+
+@app.post("/api/facturas/manual", status_code=201)
+def agregar_factura_manual(body: FacturaManual):
+    now = datetime.now()
+    fecha_ref = body.fecha_cobro or body.fecha_emision
+    try:
+        dt = datetime.fromisoformat(fecha_ref[:10])
+        mes, anio = dt.month, dt.year
+    except Exception:
+        mes, anio = now.month, now.year
+
+    xubio_id = f"MANUAL-{body.numero}-{body.fecha_emision}"
+    with get_conn() as conn:
+        existing = conn.execute("SELECT id FROM facturas WHERE xubio_id = ?", (xubio_id,)).fetchone()
+        if existing:
+            raise HTTPException(400, f"Ya existe una factura manual con número {body.numero}")
+        cur = conn.execute(
+            """INSERT INTO facturas
+               (xubio_id, numero, tipo, fecha_emision, fecha_cobro,
+                cliente_nombre, vendedor_id, neto, iva, total,
+                estado, periodo_cobro_mes, periodo_cobro_anio, synced_at)
+               VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+            (xubio_id, body.numero, body.tipo, body.fecha_emision, body.fecha_cobro,
+             body.cliente_nombre, body.vendedor_id, body.neto, body.iva,
+             body.neto + body.iva, body.estado, mes, anio, now.isoformat()),
+        )
+        return {"id": cur.lastrowid, "ok": True}
 
 
 @app.post("/api/facturas/{fid}/asignar-vendedor")
@@ -671,7 +711,7 @@ _sync_running = False
 
 
 @app.post("/api/sincronizar")
-def sincronizar(meses_atras: int = 3):
+def sincronizar(meses_atras: int = 1):
     global _sync_running
     if _sync_running:
         raise HTTPException(409, "Ya hay una sincronización en curso")

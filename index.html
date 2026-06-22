@@ -217,6 +217,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
       <div class="section-header">
         <h2>Facturas</h2>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-primary" onclick="openFacturaManual()">➕ Agregar Manual</button>
           <div class="periodo">
             <select id="fact-mes" onchange="loadFacturas()">
               <option value="">Todos</option>
@@ -368,6 +369,64 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-vendedor')">Cancelar</button>
       <button class="btn btn-primary" onclick="guardarVendedor()">Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Factura Manual -->
+<div class="modal-bg" id="modal-factura-manual">
+  <div class="modal">
+    <h2>➕ Agregar Factura Manual</h2>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
+      Para facturas de Xubio que no se sincronizaron o no tienen vendedora asignada.
+    </p>
+    <div class="form-grid">
+      <div class="field">
+        <label>Número de factura *</label>
+        <input id="mf-numero" type="text" placeholder="ej: A-0001-00000123"/>
+      </div>
+      <div class="field">
+        <label>Tipo</label>
+        <select id="mf-tipo">
+          <option>Factura A</option><option>Factura B</option>
+          <option>Factura C</option><option>Factura</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Fecha de emisión *</label>
+        <input id="mf-fecha-emision" type="date"/>
+      </div>
+      <div class="field">
+        <label>Fecha de cobro</label>
+        <input id="mf-fecha-cobro" type="date"/>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Cliente *</label>
+        <input id="mf-cliente" type="text" placeholder="Nombre o razón social del cliente"/>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Vendedora *</label>
+        <select id="mf-vendedor-sel"><option value="">— Sin vendedora —</option></select>
+      </div>
+      <div class="field">
+        <label>Importe NETO sin IVA ($) *</label>
+        <input id="mf-neto" type="number" min="0" step="0.01" placeholder="0.00"/>
+      </div>
+      <div class="field">
+        <label>IVA ($)</label>
+        <input id="mf-iva" type="number" min="0" step="0.01" value="0"/>
+      </div>
+      <div class="field" style="grid-column:1/-1">
+        <label>Estado</label>
+        <select id="mf-estado">
+          <option value="cobrada">Cobrada ✔</option>
+          <option value="emitida">Emitida (pendiente cobro)</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-factura-manual')">Cancelar</button>
+      <button class="btn btn-primary" onclick="confirmarFacturaManual()">Guardar Factura</button>
     </div>
   </div>
 </div>
@@ -670,7 +729,7 @@ function populateVendedorSelects() {
   const opts = vendedoresList.filter(v=>v.activo).map(v =>
     `<option value="${v.id}">${v.nombre}</option>`
   ).join('');
-  ['fact-vendedor','asignar-vendedor-sel','res-vendedor-sel','res-vendedor'].forEach(id => {
+  ['fact-vendedor','asignar-vendedor-sel','res-vendedor-sel','res-vendedor','mf-vendedor-sel'].forEach(id => {
     const el = $(id);
     if (!el) return;
     const first = el.options[0];
@@ -829,6 +888,49 @@ async function confirmarAsignar() {
       toast('Vendedor asignado a la factura');
     }
     closeModal('modal-asignar');
+    loadFacturas();
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Factura Manual ────────────────────────────────────────────────────────────
+function openFacturaManual() {
+  $('mf-numero').value = '';
+  $('mf-tipo').value = 'Factura A';
+  $('mf-fecha-emision').value = '';
+  $('mf-fecha-cobro').value = '';
+  $('mf-cliente').value = '';
+  $('mf-vendedor-sel').value = '';
+  $('mf-neto').value = '';
+  $('mf-iva').value = '0';
+  $('mf-estado').value = 'cobrada';
+  openModal('modal-factura-manual');
+}
+
+async function confirmarFacturaManual() {
+  const numero = $('mf-numero').value.trim();
+  const fechaEmision = $('mf-fecha-emision').value;
+  const clienteNombre = $('mf-cliente').value.trim();
+  const neto = parseFloat($('mf-neto').value);
+  if (!numero)        { toast('El número de factura es obligatorio', 'err'); return; }
+  if (!fechaEmision)  { toast('La fecha de emisión es obligatoria', 'err'); return; }
+  if (!clienteNombre) { toast('El nombre del cliente es obligatorio', 'err'); return; }
+  if (!neto || neto <= 0) { toast('El importe neto debe ser mayor a 0', 'err'); return; }
+  const body = {
+    numero,
+    fecha_emision: fechaEmision,
+    fecha_cobro: $('mf-fecha-cobro').value || null,
+    cliente_nombre: clienteNombre,
+    vendedor_id: $('mf-vendedor-sel').value ? parseInt($('mf-vendedor-sel').value) : null,
+    neto,
+    iva: parseFloat($('mf-iva').value) || 0,
+    tipo: $('mf-tipo').value,
+    estado: $('mf-estado').value,
+  };
+  try {
+    await api('/facturas/manual', {method:'POST', body:JSON.stringify(body)});
+    toast('Factura agregada correctamente');
+    closeModal('modal-factura-manual');
     loadFacturas();
     loadDashboard();
   } catch(e) { toast(e.message, 'err'); }

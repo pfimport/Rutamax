@@ -121,12 +121,32 @@ class XubioClient:
     # ── Comprobantes de Venta ────────────────────────────────────────────────
 
     def get_comprobantes(self, fecha_desde: str, fecha_hasta: str, page: int = 1) -> dict:
-        data = self._get("ComprobanteVenta", {
-            "fechaDesde": fecha_desde,
-            "fechaHasta": fecha_hasta,
-            "pagina": page,
-            "pageSize": 200,
-        })
+        # Xubio AR uses DD/MM/YYYY format and may call the endpoint differently
+        def fmt_ar(d):
+            # accepts YYYY-MM-DD, returns DD/MM/YYYY
+            parts = d.split("-")
+            return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+
+        fd_ar = fmt_ar(fecha_desde)
+        fh_ar = fmt_ar(fecha_hasta)
+
+        # Try multiple endpoint + param combinations until one works
+        attempts = [
+            ("ComprobanteVenta", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ComprobanteVenta", {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
+            ("Comprobante",      {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ComprobanteVenta", {"fecha_desde": fd_ar, "fecha_hasta": fh_ar, "page": page}),
+        ]
+        last_err = None
+        for endpoint, params in attempts:
+            try:
+                data = self._get(endpoint, params)
+                break
+            except Exception as e:
+                last_err = e
+                continue
+        else:
+            raise RuntimeError(f"No se pudo obtener comprobantes de Xubio: {last_err}")
         raw = data if isinstance(data, list) else data.get("data", data.get("comprobantes", []))
         items = []
         for c in raw:
