@@ -93,6 +93,15 @@ def init_db():
                 key TEXT PRIMARY KEY,
                 value TEXT
             );
+
+            CREATE INDEX IF NOT EXISTS idx_facturas_periodo_vendedor
+                ON facturas (vendedor_id, periodo_cobro_mes, periodo_cobro_anio, estado);
+
+            CREATE INDEX IF NOT EXISTS idx_facturas_cliente
+                ON facturas (cliente_id_xubio);
+
+            CREATE INDEX IF NOT EXISTS idx_facturas_xubio_id
+                ON facturas (xubio_id);
         """)
 
 

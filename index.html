@@ -1473,27 +1473,50 @@ async function sincronizar() {
   $('sync-icon').innerHTML = '<span class="spin"></span>';
   $('sync-status').textContent = 'Sincronizando...';
   try {
-    const r = await api('/sincronizar', {method:'POST'});
-    $('sync-status').textContent = `Última: ${new Date().toLocaleTimeString('es-AR')}`;
-    // Refresh vendor list in case new ones appeared
-    vendedoresList = await api('/vendedores');
-    populateVendedorSelects();
-    loadDashboard();
-    const cobMsg = r.cobranzas_aplicadas ? ` · ${r.cobranzas_aplicadas} cobranzas` : '';
-    toast(`Sync OK · +${r.facturas_nuevas} fact.${cobMsg} · ${r.vendedores_nuevos} vendedores nuevos`);
-    // Auto-open wizard if there are unassigned invoices
-    const pendientes = await api('/pendientes');
-    if (pendientes.length) {
-      pendientesQueue = pendientes;
-      pendienteIdx = 0;
-      showPendienteStep();
-      openModal('modal-pendientes');
-    }
+    await api('/sincronizar', {method:'POST'});
+    // Sync runs in background — poll until done
+    await pollSyncEstado();
   } catch(e) {
     toast(e.message, 'err');
     $('sync-status').textContent = 'Error en sync';
-  } finally {
     $('sync-icon').textContent = '⟳';
+  }
+}
+
+async function pollSyncEstado() {
+  const maxWait = 300; // seconds
+  const start = Date.now();
+  while (true) {
+    await new Promise(r => setTimeout(r, 2000));
+    const estado = await api('/sincronizar/estado');
+    if (!estado.corriendo) {
+      const r = estado.ultimo_resultado || {};
+      if (r.error) {
+        toast('Error en sync: ' + r.error, 'err');
+        $('sync-status').textContent = 'Error en sync';
+      } else {
+        $('sync-status').textContent = `Última: ${new Date().toLocaleTimeString('es-AR')}`;
+        vendedoresList = await api('/vendedores');
+        populateVendedorSelects();
+        loadDashboard();
+        const cobMsg = r.cobranzas_aplicadas ? ` · ${r.cobranzas_aplicadas} cobradas` : '';
+        toast(`Sync OK · +${r.facturas_nuevas || 0} fact.${cobMsg} · ${r.vendedores_nuevos || 0} vendedores nuevos`);
+        const pendientes = await api('/pendientes');
+        if (pendientes.length) {
+          pendientesQueue = pendientes;
+          pendienteIdx = 0;
+          showPendienteStep();
+          openModal('modal-pendientes');
+        }
+      }
+      $('sync-icon').textContent = '⟳';
+      return;
+    }
+    if ((Date.now() - start) / 1000 > maxWait) {
+      toast('Sync tardó demasiado, revisá el log', 'err');
+      $('sync-icon').textContent = '⟳';
+      return;
+    }
   }
 }
 

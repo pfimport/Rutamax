@@ -697,6 +697,12 @@ def dashboard(mes: int = None, anio: int = None):
 
 # ── Sincronización ────────────────────────────────────────────────────────────
 
+def _mes_atras(now: datetime, delta: int) -> tuple:
+    """Return (year, month) for `delta` months before `now`, handling year boundaries correctly."""
+    total = now.year * 12 + now.month - 1 - delta
+    return total // 12, total % 12 + 1
+
+
 def _do_sync(xubio: XubioClient, meses_atras: int = 3):
     """Full sync: vendors, clients, invoices, cobranzas."""
     now = datetime.now()
@@ -725,16 +731,12 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
             detalles.append(f"Warn vendedores: {e}")
 
         # 2. Sync invoices + cobranzas for last N months
+        import calendar
         for delta in range(meses_atras):
-            m = (now.month - delta - 1) % 12 + 1
-            a = now.year - ((now.month - delta - 1) // 12)
+            a, m = _mes_atras(now, delta)
+            last_day = calendar.monthrange(a, m)[1]
             fecha_desde = f"{a}-{m:02d}-01"
-            if m == 12:
-                fecha_hasta = f"{a}-12-31"
-            else:
-                import calendar
-                last_day = calendar.monthrange(a, m)[1]
-                fecha_hasta = f"{a}-{m:02d}-{last_day}"
+            fecha_hasta = f"{a}-{m:02d}-{last_day}"
 
             page = 1
             while True:
@@ -838,9 +840,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
         # For each cobranza we look for direct invoice_ids first, then fall back to
         # client+date matching (all unpaid invoices for that client emitted before payment date).
         try:
-            last_delta = meses_atras - 1
-            m0 = (now.month - last_delta - 1) % 12 + 1
-            a0 = now.year - ((now.month - last_delta - 1) // 12)
+            a0, m0 = _mes_atras(now, meses_atras - 1)
             global_fd = f"{a0}-{m0:02d}-01"
             global_fh = now.date().isoformat()
 
@@ -899,20 +899,36 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
 
 
 _sync_running = False
+_last_sync_result: dict = {}
+
+
+def _run_sync_bg(xubio: XubioClient, meses_atras: int):
+    global _sync_running, _last_sync_result
+    try:
+        _last_sync_result = _do_sync(xubio, meses_atras)
+    except Exception as e:
+        _last_sync_result = {"error": str(e)}
+    finally:
+        _sync_running = False
 
 
 @app.post("/api/sincronizar")
-def sincronizar(meses_atras: int = 1):
+def sincronizar(background_tasks: BackgroundTasks, meses_atras: int = 1):
     global _sync_running
     if _sync_running:
         raise HTTPException(409, "Ya hay una sincronización en curso")
     xubio = get_xubio()
     _sync_running = True
-    try:
-        result = _do_sync(xubio, meses_atras)
-    finally:
-        _sync_running = False
-    return result
+    background_tasks.add_task(_run_sync_bg, xubio, meses_atras)
+    return {"status": "iniciado", "meses_atras": meses_atras}
+
+
+@app.get("/api/sincronizar/estado")
+def estado_sync():
+    return {
+        "corriendo": _sync_running,
+        "ultimo_resultado": _last_sync_result,
+    }
 
 
 @app.get("/api/sync-log")
