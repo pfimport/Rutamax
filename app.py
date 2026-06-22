@@ -898,7 +898,7 @@ def test_conexion_xubio():
 
 
 @app.get("/api/debug/xubio")
-def debug_xubio_raw(recurso: str = "cobranzaBean", fecha_desde: str = None, fecha_hasta: str = None):
+def debug_xubio_raw(recurso: str = "comprobanteVentaBean", fecha_desde: str = None, fecha_hasta: str = None):
     """Return raw Xubio API response for a given resource (for debugging field names)."""
     xubio = get_xubio()
     from datetime import date

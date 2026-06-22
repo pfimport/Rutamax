@@ -8,19 +8,25 @@ API_BASE = "https://xubio.com/API/1.1"
 
 # Field name mappings — adjust here if Xubio returns different names
 FIELD_MAP_COMPROBANTE = {
-    "id":             ["id", "idcomprobante", "comprobante_id"],
-    "numero":         ["numero", "nrocomprobante", "numero_comprobante"],
+    # comprobante field in Bean API is the numeric ID
+    "id":             ["comprobante", "id", "idcomprobante", "comprobante_id", "transaccionid"],
+    "numero":         ["numero", "nrocomprobante", "numero_comprobante", "externalId"],
+    # tipo: numeric code — 1=Factura, 2=ND, 3=NC (see _TIPO_CODES)
     "tipo":           ["tipo", "tipocomprobante", "tipo_comprobante"],
-    "fecha_emision":  ["fecha", "fecha_emision", "fechaemision"],
+    # letra: A/B/C — separate field if present
+    "letra":          ["letra", "tipoLetra", "tipo_letra"],
+    "fecha_emision":  ["fechaDesde", "fecha", "fecha_emision", "fechaemision"],
     "fecha_cobro":    ["fecha_cobro", "fechacobro", "fecha_pago"],
     "estado":         ["estado", "estado_pago", "estadopago"],
+    # cliente is a nested object in Bean API: {ID, nombre, codigo, id}
+    # handled specially in get_comprobantes()
     "cliente_id":     ["cliente_id", "idcliente", "clienteid"],
-    "cliente_nombre": ["nombre_cliente", "cliente", "razon_social"],
+    "cliente_nombre": ["nombre_cliente", "razon_social"],
     "neto":           ["neto", "importe_neto", "importe_gravado", "gravado"],
     "iva":            ["iva", "importe_iva", "total_iva"],
     "total":          ["total", "importe_total", "monto_total"],
-    "vendedor_id":    ["vendedor_id", "idvendedor", "vendedor"],
-    "vendedor_nombre":["vendedor", "nombre_vendedor", "vendedor_nombre"],
+    "vendedor_id":    ["vendedor_id", "idvendedor"],
+    "vendedor_nombre":["nombre_vendedor", "vendedor_nombre"],
 }
 
 FIELD_MAP_CLIENTE = {
@@ -72,21 +78,28 @@ def _parse_fecha(s: str) -> str:
     return s[:10]                # already YYYY-MM-DD (or trim time)
 
 
-# Xubio sometimes returns tipo as a numeric code (from import template: TIPO=1 → Factura A)
+# Tipo codes from GET /comprobanteVentaBean docs:
+# 1=Factura, 2=Nota de Débito, 3=Nota de Crédito, 4=Recibo, 5=Informe Diario de Cierre
+# The A/B/C letter comes from a separate field (letra/tipoLetra) if present.
 _TIPO_CODES = {
-    "1": "Factura A", "2": "Factura B", "3": "Factura C", "4": "Factura M",
-    "5": "Nota de Débito A", "6": "Nota de Débito B", "7": "Nota de Débito C",
-    "8": "Nota de Crédito A", "9": "Nota de Crédito B", "10": "Nota de Crédito C",
-    "11": "Factura E", "12": "Nota de Crédito E", "13": "Nota de Débito E",
-    "51": "Factura A", "52": "Factura B", "53": "Factura C",
+    "1": "Factura",
+    "2": "Nota de Débito",
+    "3": "Nota de Crédito",
+    "4": "Recibo",
+    "5": "Informe Diario de Cierre",
 }
 
 
-def _normalize_tipo(tipo) -> str:
+def _normalize_tipo(tipo, letra=None) -> str:
     if tipo is None:
         return ""
     s = str(tipo).strip()
-    return _TIPO_CODES.get(s, s)
+    nombre = _TIPO_CODES.get(s, s)
+    if letra:
+        letra = str(letra).strip().upper()
+        if letra and not nombre.endswith(letra):
+            nombre = f"{nombre} {letra}"
+    return nombre
 
 
 def _is_nota_credito(tipo: str) -> bool:
@@ -139,26 +152,42 @@ class XubioClient:
     # ── Vendedores ──────────────────────────────────────────────────────────
 
     def get_vendedores(self) -> list:
-        try:
-            # Confirmed endpoint name from Xubio API docs: "vendedor" (lowercase)
-            data = self._get("vendedor")
-            raw = data if isinstance(data, list) else data.get("data", data.get("vendedores", []))
-            return [
-                {
-                    "xubio_id": str(_extract(v, FIELD_MAP_VENDEDOR["id"], "")),
-                    "nombre":   _extract(v, FIELD_MAP_VENDEDOR["nombre"], "Sin nombre"),
-                    "email":    _extract(v, FIELD_MAP_VENDEDOR["email"], ""),
-                }
-                for v in raw
-            ]
-        except Exception as e:
-            raise RuntimeError(f"Error al obtener vendedores de Xubio: {e}")
+        # Xubio API docs list this as /vendorBean (Bean suffix pattern, same as all other endpoints)
+        last_err = None
+        for endpoint in ("vendorBean", "vendedor", "VendorBean", "Vendedor"):
+            try:
+                data = self._get(endpoint)
+                break
+            except Exception as e:
+                last_err = e
+                continue
+        else:
+            raise RuntimeError(f"Error al obtener vendedores de Xubio: {last_err}")
+
+        raw = data if isinstance(data, list) else data.get("data", data.get("vendedores", []))
+        result = []
+        for v in raw:
+            # vendedor may also have nested fields; handle flat for now
+            result.append({
+                "xubio_id": str(_extract(v, FIELD_MAP_VENDEDOR["id"], "")),
+                "nombre":   _extract(v, FIELD_MAP_VENDEDOR["nombre"], "Sin nombre"),
+                "email":    _extract(v, FIELD_MAP_VENDEDOR["email"], ""),
+            })
+        return result
 
     # ── Clientes ─────────────────────────────────────────────────────────────
 
     def get_clientes(self, page: int = 1) -> dict:
-        # Confirmed endpoint name from Xubio API docs: "cliente" (lowercase)
-        data = self._get("cliente", {"pagina": page, "pageSize": 100})
+        # Xubio API uses clienteBean (consistent Bean suffix pattern)
+        last_err = None
+        for ep in ("clienteBean", "cliente", "ClienteBean"):
+            try:
+                data = self._get(ep, {"pagina": page, "pageSize": 100})
+                break
+            except Exception as e:
+                last_err = e
+        else:
+            raise RuntimeError(f"Error al obtener clientes: {last_err}")
         raw = data if isinstance(data, list) else data.get("data", data.get("clientes", []))
         items = [
             {
@@ -175,21 +204,19 @@ class XubioClient:
     # ── Comprobantes de Venta ────────────────────────────────────────────────
 
     def get_comprobantes(self, fecha_desde: str, fecha_hasta: str, page: int = 1) -> dict:
-        # Xubio AR uses DD/MM/YYYY format and may call the endpoint differently
         def fmt_ar(d):
-            # accepts YYYY-MM-DD, returns DD/MM/YYYY
             parts = d.split("-")
             return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
 
         fd_ar = fmt_ar(fecha_desde)
         fh_ar = fmt_ar(fecha_hasta)
 
-        # Confirmed endpoint from Xubio API docs: "ComprobanteDeVenta"
+        # Confirmed endpoint from Xubio API docs: GET /comprobanteVentaBean
         attempts = [
-            ("ComprobanteDeVenta", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ComprobanteDeVenta", {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
-            ("ComprobanteVenta",   {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("Comprobante",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("comprobanteVentaBean", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("comprobanteVentaBean", {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
+            ("ComprobanteDeVenta",   {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("Comprobante",          {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
         ]
         last_err = None
         for endpoint, params in attempts:
@@ -201,36 +228,56 @@ class XubioClient:
                 continue
         else:
             raise RuntimeError(f"No se pudo obtener comprobantes de Xubio: {last_err}")
+
         raw = data if isinstance(data, list) else data.get("data", data.get("comprobantes", []))
         items = []
         for c in raw:
-            estado = _extract(c, FIELD_MAP_COMPROBANTE["estado"], "emitida")
-            fecha_cobro = _extract(c, FIELD_MAP_COMPROBANTE["fecha_cobro"])
-            fecha_emision = _extract(c, FIELD_MAP_COMPROBANTE["fecha_emision"], "")
-            tipo = _normalize_tipo(_extract(c, FIELD_MAP_COMPROBANTE["tipo"], ""))
+            # cliente is a nested object: {ID, nombre, codigo, id}
+            cliente_obj = c.get("cliente")
+            if isinstance(cliente_obj, dict):
+                cliente_id = str(cliente_obj.get("ID") or cliente_obj.get("id") or
+                                 _extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "") or "")
+                cliente_nombre = (cliente_obj.get("nombre") or
+                                  _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], ""))
+            else:
+                cliente_id = str(_extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "") or "")
+                cliente_nombre = _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], "")
 
+            # vendedor may also be a nested object
+            vendedor_obj = c.get("vendedor")
+            if isinstance(vendedor_obj, dict):
+                vendedor_xubio_id = str(vendedor_obj.get("ID") or vendedor_obj.get("id") or "")
+            else:
+                vendedor_xubio_id = str(_extract(c, FIELD_MAP_COMPROBANTE["vendedor_id"], "") or "")
+
+            letra = _extract(c, FIELD_MAP_COMPROBANTE["letra"])
+            tipo = _normalize_tipo(_extract(c, FIELD_MAP_COMPROBANTE["tipo"], ""), letra)
+
+            estado = _extract(c, FIELD_MAP_COMPROBANTE["estado"], "emitida")
             neto  = float(_extract(c, FIELD_MAP_COMPROBANTE["neto"],  0) or 0)
             iva   = float(_extract(c, FIELD_MAP_COMPROBANTE["iva"],   0) or 0)
             total = float(_extract(c, FIELD_MAP_COMPROBANTE["total"], 0) or 0)
 
-            # Notas de Crédito reduce the commission base → store as negative
             if _is_nota_credito(tipo):
                 neto, iva, total = -abs(neto), -abs(iva), -abs(total)
-                estado = "cobrada"  # ensure NCs are always included in summaries
+                estado = "cobrada"
+
+            # ID: use the numeric `comprobante` field; fall back to other candidates
+            xubio_id = str(_extract(c, FIELD_MAP_COMPROBANTE["id"], "") or "")
 
             items.append({
-                "xubio_id":          str(_extract(c, FIELD_MAP_COMPROBANTE["id"], "")),
-                "numero":            _extract(c, FIELD_MAP_COMPROBANTE["numero"], ""),
+                "xubio_id":          xubio_id,
+                "numero":            _extract(c, FIELD_MAP_COMPROBANTE["numero"], "") or xubio_id,
                 "tipo":              tipo,
                 "fecha_emision":     _parse_fecha(_extract(c, FIELD_MAP_COMPROBANTE["fecha_emision"], "") or ""),
                 "fecha_cobro":       _parse_fecha(_extract(c, FIELD_MAP_COMPROBANTE["fecha_cobro"]) or ""),
                 "estado":            estado,
-                "cliente_id":        str(_extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "")),
-                "cliente_nombre":    _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], ""),
+                "cliente_id":        cliente_id,
+                "cliente_nombre":    cliente_nombre,
                 "neto":              neto,
                 "iva":               iva,
                 "total":             total,
-                "vendedor_xubio_id": str(_extract(c, FIELD_MAP_COMPROBANTE["vendedor_id"], "") or ""),
+                "vendedor_xubio_id": vendedor_xubio_id,
             })
         total_r = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
         return {"items": items, "total": total_r, "page": page}
