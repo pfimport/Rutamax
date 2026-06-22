@@ -812,49 +812,9 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                     break
                 page += 1
 
-            # 3. Sync cobranzas for this month and mark matched invoices as cobrada
-            #    Xubio links cobranza → invoice by the human-readable invoice NUMBER
-            #    (e.g. "A-00001-00004567"), not by internal ID.
-            try:
-                page_c = 1
-                while True:
-                    resp_c = xubio.get_cobranzas(fecha_desde, fecha_hasta, page_c)
-                    for cob in resp_c["items"]:
-                        if not cob["fecha"] or not cob["numero_comprobante"]:
-                            continue
-                        try:
-                            dt_c = datetime.fromisoformat(cob["fecha"][:10])
-                            mes_c, anio_c = dt_c.month, dt_c.year
-                        except Exception:
-                            continue
-                        # Look up by invoice numero (primary) or xubio_id (fallback)
-                        factura = conn.execute(
-                            "SELECT id FROM facturas WHERE numero = ?",
-                            (cob["numero_comprobante"],),
-                        ).fetchone()
-                        if not factura:
-                            factura = conn.execute(
-                                "SELECT id FROM facturas WHERE xubio_id = ?",
-                                (cob["numero_comprobante"],),
-                            ).fetchone()
-                        if not factura:
-                            continue
-                        conn.execute(
-                            """UPDATE facturas
-                               SET estado = 'cobrada',
-                                   fecha_cobro = ?,
-                                   periodo_cobro_mes = ?,
-                                   periodo_cobro_anio = ?
-                               WHERE id = ?
-                                 AND (estado != 'cobrada' OR fecha_cobro IS NULL)""",
-                            (cob["fecha"][:10], mes_c, anio_c, factura["id"]),
-                        )
-                        stats["cobranzas_aplicadas"] += 1
-                    if page_c * 200 >= resp_c["total"]:
-                        break
-                    page_c += 1
-            except Exception as e:
-                detalles.append(f"Warn cobranzas {fecha_desde}: {e}")
+            # Note: payment status is now determined directly from each invoice's
+            # transaccionCobranzaItems field (fetched in get_comprobantes), so no
+            # separate cobranza sync is needed.
 
         conn.execute(
             """INSERT INTO sync_log (fecha, facturas_nuevas, facturas_actualizadas,
