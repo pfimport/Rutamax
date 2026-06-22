@@ -36,12 +36,32 @@ FIELD_MAP_VENDEDOR = {
     "email":  ["email", "mail"],
 }
 
+FIELD_MAP_COBRANZA = {
+    "id":             ["id", "idcobranza", "cobranza_id", "id_recibo", "idrecibo"],
+    "fecha":          ["fecha", "fecha_cobro", "fecha_cobranza", "fecha_recibo", "fechacobro"],
+    "comprobante_id": ["comprobante_id", "id_comprobante", "idcomprobante",
+                       "factura_id", "id_factura", "idfactura",
+                       "comprobante", "idcomprobanterelacionado"],
+    "cliente_id":     ["cliente_id", "idcliente", "id_cliente"],
+    "monto":          ["monto", "importe", "total", "monto_cobrado", "importetotal"],
+}
+
 
 def _extract(obj: dict, field_map_entry: list, default=None):
     for key in field_map_entry:
         if key in obj:
             return obj[key]
     return default
+
+
+def _parse_fecha(s: str) -> str:
+    """Normalize to YYYY-MM-DD accepting both DD/MM/YYYY and YYYY-MM-DD."""
+    if not s:
+        return ""
+    parts = s.split("/")
+    if len(parts) == 3:          # DD/MM/YYYY → YYYY-MM-DD
+        return f"{parts[2]}-{parts[1]}-{parts[0]}"
+    return s[:10]                # already YYYY-MM-DD (or trim time)
 
 
 def _is_nota_credito(tipo: str) -> bool:
@@ -175,8 +195,8 @@ class XubioClient:
                 "xubio_id":          str(_extract(c, FIELD_MAP_COMPROBANTE["id"], "")),
                 "numero":            _extract(c, FIELD_MAP_COMPROBANTE["numero"], ""),
                 "tipo":              tipo,
-                "fecha_emision":     fecha_emision,
-                "fecha_cobro":       fecha_cobro,
+                "fecha_emision":     _parse_fecha(_extract(c, FIELD_MAP_COMPROBANTE["fecha_emision"], "") or ""),
+                "fecha_cobro":       _parse_fecha(_extract(c, FIELD_MAP_COMPROBANTE["fecha_cobro"]) or ""),
                 "estado":            estado,
                 "cliente_id":        str(_extract(c, FIELD_MAP_COMPROBANTE["cliente_id"], "")),
                 "cliente_nombre":    _extract(c, FIELD_MAP_COMPROBANTE["cliente_nombre"], ""),
@@ -185,5 +205,54 @@ class XubioClient:
                 "total":             total,
                 "vendedor_xubio_id": str(_extract(c, FIELD_MAP_COMPROBANTE["vendedor_id"], "") or ""),
             })
-        total = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
-        return {"items": items, "total": total, "page": page}
+        total_r = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
+        return {"items": items, "total": total_r, "page": page}
+
+    # ── Cobranzas ────────────────────────────────────────────────────────────
+
+    def get_cobranzas(self, fecha_desde: str, fecha_hasta: str, page: int = 1) -> dict:
+        def fmt_ar(d):
+            parts = d.split("-")
+            return f"{parts[2]}/{parts[1]}/{parts[0]}" if len(parts) == 3 else d
+
+        fd_ar = fmt_ar(fecha_desde)
+        fh_ar = fmt_ar(fecha_hasta)
+
+        attempts = [
+            ("Cobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ReciboCobro",     {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ReciboCobranza",  {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("CobranzaVenta",   {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("Cobro",           {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+        ]
+        last_err = None
+        for endpoint, params in attempts:
+            try:
+                data = self._get(endpoint, params)
+                break
+            except Exception as e:
+                last_err = e
+                continue
+        else:
+            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {last_err}")
+
+        raw = data if isinstance(data, list) else data.get(
+            "data", data.get("cobranzas", data.get("cobros", data.get("recibos", [])))
+        )
+        items = []
+        for c in raw:
+            fecha_raw = _extract(c, FIELD_MAP_COBRANZA["fecha"], "")
+            comp_id   = _extract(c, FIELD_MAP_COBRANZA["comprobante_id"], "")
+            if isinstance(comp_id, list):
+                comp_id = comp_id[0] if comp_id else ""
+            if isinstance(comp_id, dict):
+                comp_id = comp_id.get("id") or comp_id.get("idcomprobante") or ""
+            items.append({
+                "xubio_id":       str(_extract(c, FIELD_MAP_COBRANZA["id"], "")),
+                "fecha":          _parse_fecha(str(fecha_raw)),
+                "comprobante_id": str(comp_id or ""),
+                "cliente_id":     str(_extract(c, FIELD_MAP_COBRANZA["cliente_id"], "") or ""),
+                "monto":          float(_extract(c, FIELD_MAP_COBRANZA["monto"], 0) or 0),
+            })
+        total_c = data.get("total", data.get("totalItems", len(items))) if isinstance(data, dict) else len(items)
+        return {"items": items, "total": total_c, "page": page}

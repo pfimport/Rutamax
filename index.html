@@ -1433,7 +1433,8 @@ async function sincronizar() {
     vendedoresList = await api('/vendedores');
     populateVendedorSelects();
     loadDashboard();
-    toast(`Sync OK · +${r.facturas_nuevas} fact. · ${r.vendedores_nuevos} vendedores nuevos`);
+    const cobMsg = r.cobranzas_aplicadas ? ` · ${r.cobranzas_aplicadas} cobranzas` : '';
+    toast(`Sync OK · +${r.facturas_nuevas} fact.${cobMsg} · ${r.vendedores_nuevos} vendedores nuevos`);
     // Auto-open wizard if there are unassigned invoices
     const pendientes = await api('/pendientes');
     if (pendientes.length) {

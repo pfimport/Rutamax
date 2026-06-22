@@ -674,10 +674,10 @@ def dashboard(mes: int = None, anio: int = None):
 # ── Sincronización ────────────────────────────────────────────────────────────
 
 def _do_sync(xubio: XubioClient, meses_atras: int = 3):
-    """Full sync: vendors, clients, invoices."""
+    """Full sync: vendors, clients, invoices, cobranzas."""
     now = datetime.now()
     stats = {"facturas_nuevas": 0, "facturas_actualizadas": 0,
-             "vendedores_nuevos": 0, "clientes_nuevos": 0}
+             "vendedores_nuevos": 0, "clientes_nuevos": 0, "cobranzas_aplicadas": 0}
     detalles = []
 
     with get_conn() as conn:
@@ -700,7 +700,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
         except Exception as e:
             detalles.append(f"Warn vendedores: {e}")
 
-        # 2. Sync invoices for last N months
+        # 2. Sync invoices + cobranzas for last N months
         for delta in range(meses_atras):
             m = (now.month - delta - 1) % 12 + 1
             a = now.year - ((now.month - delta - 1) // 12)
@@ -787,6 +787,42 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                 if page * 200 >= resp["total"]:
                     break
                 page += 1
+
+            # 3. Sync cobranzas for this month and link to invoices
+            try:
+                page_c = 1
+                while True:
+                    resp_c = xubio.get_cobranzas(fecha_desde, fecha_hasta, page_c)
+                    for cob in resp_c["items"]:
+                        if not cob["fecha"] or not cob["comprobante_id"]:
+                            continue
+                        factura = conn.execute(
+                            "SELECT id FROM facturas WHERE xubio_id = ?",
+                            (cob["comprobante_id"],),
+                        ).fetchone()
+                        if not factura:
+                            continue
+                        try:
+                            dt_c = datetime.fromisoformat(cob["fecha"][:10])
+                            mes_c, anio_c = dt_c.month, dt_c.year
+                        except Exception:
+                            continue
+                        conn.execute(
+                            """UPDATE facturas
+                               SET estado = 'cobrada',
+                                   fecha_cobro = ?,
+                                   periodo_cobro_mes = ?,
+                                   periodo_cobro_anio = ?
+                               WHERE id = ?
+                                 AND (estado != 'cobrada' OR fecha_cobro IS NULL)""",
+                            (cob["fecha"][:10], mes_c, anio_c, factura["id"]),
+                        )
+                        stats["cobranzas_aplicadas"] += 1
+                    if page_c * 200 >= resp_c["total"]:
+                        break
+                    page_c += 1
+            except Exception as e:
+                detalles.append(f"Warn cobranzas {fecha_desde}: {e}")
 
         conn.execute(
             """INSERT INTO sync_log (fecha, facturas_nuevas, facturas_actualizadas,
