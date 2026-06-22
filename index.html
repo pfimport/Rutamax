@@ -491,6 +491,56 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
   </div>
 </div>
 
+<!-- Modal Revisar Pendientes -->
+<div class="modal-bg" id="modal-pendientes">
+  <div class="modal" style="max-width:600px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+      <h2>📋 Facturas sin vendedora</h2>
+      <span id="pend-progreso" style="font-size:12px;color:var(--muted);font-weight:600"></span>
+    </div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
+      Asigná una vendedora a cada cliente con facturas pendientes.
+    </p>
+
+    <div style="background:var(--surface2);border-radius:10px;padding:14px;margin-bottom:16px">
+      <div style="font-size:15px;font-weight:700;margin-bottom:10px" id="pend-cliente-nombre"></div>
+      <div style="display:flex;gap:24px;flex-wrap:wrap;margin-bottom:10px">
+        <div><div class="label">Facturas</div>
+          <div id="pend-cant" style="font-size:16px;font-weight:600"></div></div>
+        <div><div class="label">Total Neto</div>
+          <div id="pend-total" style="font-size:16px;font-weight:600;color:var(--cyan)"></div></div>
+        <div><div class="label">Última emisión</div>
+          <div id="pend-ultima" style="font-size:13px"></div></div>
+      </div>
+      <div id="pend-facturas-detalle" style="font-size:12px;color:var(--muted);max-height:90px;overflow-y:auto;line-height:1.7"></div>
+    </div>
+
+    <div class="field" style="margin-bottom:14px">
+      <label>¿A qué vendedora le corresponde este cliente?</label>
+      <select id="pend-vendedor-sel"><option value="">— Elegí una vendedora —</option></select>
+    </div>
+
+    <label id="pend-permanente-row" style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;
+      font-size:13px;background:var(--surface2);border-radius:8px;padding:12px;margin-bottom:16px">
+      <input type="checkbox" id="pend-permanente" checked style="width:auto;margin-top:2px"/>
+      <div>
+        <div style="font-weight:600">Asignar siempre a esta vendedora</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px">
+          Todas las facturas pasadas y futuras de este cliente quedarán asignadas automáticamente
+        </div>
+      </div>
+    </label>
+
+    <div class="modal-footer" style="justify-content:space-between">
+      <button class="btn btn-secondary" onclick="saltarPendiente()">Saltar →</button>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-secondary" onclick="closeModal('modal-pendientes');loadDashboard()">Cerrar</button>
+        <button class="btn btn-primary" onclick="asignarPendiente()">Asignar ✓</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Detalle Resumen -->
 <div class="modal-bg" id="modal-det-resumen">
   <div class="modal" style="max-width:700px">
@@ -596,9 +646,8 @@ async function loadDashboard() {
     if (d.facturas_sin_vendedor > 0) {
       $('dash-alerta').style.display = '';
       $('dash-alerta').innerHTML =
-        `⚠️ Hay <strong>${d.facturas_sin_vendedor}</strong> factura(s) sin vendedor asignado en este período.
-         <a href="#" onclick="showTab('facturas');document.getElementById('fact-sin-vendedor').checked=true;loadFacturas();return false">
-         Ver facturas</a>`;
+        `⚠️ Hay <strong>${d.facturas_sin_vendedor}</strong> factura(s) sin vendedora asignada este mes. &nbsp;
+         <button class="btn btn-primary btn-sm" onclick="openReviewWizard()">📋 Revisar y asignar</button>`;
     } else {
       $('dash-alerta').style.display = 'none';
     }
@@ -891,6 +940,81 @@ async function confirmarAsignar() {
     loadFacturas();
     loadDashboard();
   } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Revisar Pendientes (wizard) ───────────────────────────────────────────────
+let pendientesQueue = [];
+let pendienteIdx = 0;
+
+async function openReviewWizard(autoOpened = false) {
+  try {
+    pendientesQueue = await api('/pendientes');
+  } catch(e) {
+    toast('Error al cargar pendientes: ' + e.message, 'err');
+    return;
+  }
+  if (!pendientesQueue.length) {
+    if (!autoOpened) toast('✔ No hay facturas sin asignar');
+    return;
+  }
+  pendienteIdx = 0;
+  showPendienteStep();
+  openModal('modal-pendientes');
+}
+
+function showPendienteStep() {
+  const item = pendientesQueue[pendienteIdx];
+  if (!item) {
+    closeModal('modal-pendientes');
+    toast('✔ Todos los pendientes asignados');
+    loadDashboard();
+    loadFacturas();
+    return;
+  }
+  const total = pendientesQueue.length;
+  $('pend-progreso').textContent = `${pendienteIdx + 1} de ${total}`;
+  $('pend-cliente-nombre').textContent = item.cliente_nombre || '(sin nombre)';
+  $('pend-cant').textContent = item.cant_facturas;
+  $('pend-total').textContent = fmt(item.total_neto || 0);
+  $('pend-ultima').textContent = item.ultima_factura?.slice(0, 10) || '—';
+  $('pend-facturas-detalle').innerHTML = (item.facturas || [])
+    .map(f => `• Nro <strong>${f.numero || '—'}</strong> · ${f.fecha_emision?.slice(0,10) || '?'} · ${fmt(f.neto)}`)
+    .join('<br>');
+  const opts = vendedoresList.filter(v => v.activo)
+    .map(v => `<option value="${v.id}">${v.nombre}</option>`).join('');
+  $('pend-vendedor-sel').innerHTML = '<option value="">— Elegí una vendedora —</option>' + opts;
+  $('pend-permanente').checked = true;
+  $('pend-permanente-row').style.display = item.cliente_id_xubio ? '' : 'none';
+}
+
+async function asignarPendiente() {
+  const item = pendientesQueue[pendienteIdx];
+  const vendedorId = parseInt($('pend-vendedor-sel').value);
+  if (!vendedorId) { toast('Elegí una vendedora primero', 'err'); return; }
+  try {
+    await api('/pendientes/asignar', {
+      method: 'POST',
+      body: JSON.stringify({
+        factura_ids: item.factura_ids,
+        cliente_id_xubio: item.cliente_id_xubio || null,
+        vendedor_id: vendedorId,
+        permanente: $('pend-permanente').checked,
+      }),
+    });
+    toast(`Asignado: ${item.cliente_nombre}`);
+    pendienteIdx++;
+    showPendienteStep();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function saltarPendiente() {
+  pendienteIdx++;
+  if (pendienteIdx >= pendientesQueue.length) {
+    closeModal('modal-pendientes');
+    loadDashboard();
+  } else {
+    showPendienteStep();
+  }
 }
 
 // ── Factura Manual ────────────────────────────────────────────────────────────
@@ -1294,11 +1418,19 @@ async function sincronizar() {
   $('sync-status').textContent = 'Sincronizando...';
   try {
     const r = await api('/sincronizar', {method:'POST'});
-    toast(`Sync OK · +${r.facturas_nuevas} fact. · ${r.vendedores_nuevos} vendedores nuevos`);
     $('sync-status').textContent = `Última: ${new Date().toLocaleTimeString('es-AR')}`;
+    // Refresh vendor list in case new ones appeared
+    vendedoresList = await api('/vendedores');
+    populateVendedorSelects();
     loadDashboard();
-    if (vendedoresList.length !== await api('/vendedores').then(v=>v.length)) {
-      loadVendedores();
+    toast(`Sync OK · +${r.facturas_nuevas} fact. · ${r.vendedores_nuevos} vendedores nuevos`);
+    // Auto-open wizard if there are unassigned invoices
+    const pendientes = await api('/pendientes');
+    if (pendientes.length) {
+      pendientesQueue = pendientes;
+      pendienteIdx = 0;
+      showPendienteStep();
+      openModal('modal-pendientes');
     }
   } catch(e) {
     toast(e.message, 'err');

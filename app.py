@@ -65,6 +65,13 @@ class AsignarVendedor(BaseModel):
     vendedor_id: Optional[int] = None  # None = quitar asignación
 
 
+class AsignarPendiente(BaseModel):
+    factura_ids: list          # list of invoice IDs
+    cliente_id_xubio: Optional[str] = None
+    vendedor_id: int
+    permanente: bool = True    # if True, save client→vendor mapping for future invoices
+
+
 class FacturaManual(BaseModel):
     numero: str
     fecha_emision: str          # YYYY-MM-DD
@@ -287,6 +294,75 @@ def asignar_vendedor_a_factura(fid: int, body: AsignarVendedor):
             raise HTTPException(404, "Factura no encontrada")
         conn.execute("UPDATE facturas SET vendedor_id = ? WHERE id = ?",
                      (body.vendedor_id, fid))
+    return {"ok": True}
+
+
+# ── Pendientes (facturas sin vendedor) ───────────────────────────────────────
+
+@app.get("/api/pendientes")
+def listar_pendientes():
+    with get_conn() as conn:
+        rows = conn.execute(
+            """SELECT COALESCE(cliente_id_xubio, 'sin-' || cliente_nombre) as grupo_id,
+                      cliente_id_xubio,
+                      cliente_nombre,
+                      COUNT(*) as cant_facturas,
+                      SUM(neto) as total_neto,
+                      MAX(fecha_emision) as ultima_factura,
+                      GROUP_CONCAT(id) as factura_ids_str
+               FROM facturas
+               WHERE vendedor_id IS NULL
+               GROUP BY COALESCE(cliente_id_xubio, 'sin-' || cliente_nombre)
+               ORDER BY total_neto DESC"""
+        ).fetchall()
+
+        result = []
+        for r in rows:
+            d = dict(r)
+            ids = [int(i) for i in d.pop("factura_ids_str", "").split(",") if i]
+            d["factura_ids"] = ids
+            if ids:
+                ph = ",".join("?" * len(ids))
+                facturas = conn.execute(
+                    f"SELECT id, numero, fecha_emision, neto, tipo FROM facturas WHERE id IN ({ph})",
+                    ids,
+                ).fetchall()
+                d["facturas"] = rows_to_list(facturas)
+            else:
+                d["facturas"] = []
+            result.append(d)
+    return result
+
+
+@app.post("/api/pendientes/asignar")
+def asignar_pendiente(body: AsignarPendiente):
+    now = datetime.now()
+    ids = [int(i) for i in body.factura_ids]
+    if not ids:
+        raise HTTPException(400, "Sin facturas para asignar")
+    with get_conn() as conn:
+        ph = ",".join("?" * len(ids))
+        conn.execute(
+            f"UPDATE facturas SET vendedor_id = ? WHERE id IN ({ph})",
+            [body.vendedor_id] + ids,
+        )
+        if body.permanente and body.cliente_id_xubio:
+            nombre_row = conn.execute(
+                "SELECT cliente_nombre FROM facturas WHERE cliente_id_xubio = ? LIMIT 1",
+                (body.cliente_id_xubio,),
+            ).fetchone()
+            nombre = nombre_row["cliente_nombre"] if nombre_row else "—"
+            conn.execute(
+                """INSERT OR REPLACE INTO clientes_vendedor
+                   (cliente_id_xubio, nombre_cliente, vendedor_id, fecha_asignacion)
+                   VALUES (?, ?, ?, ?)""",
+                (body.cliente_id_xubio, nombre, body.vendedor_id, now.isoformat()),
+            )
+            # Propagate to any other unassigned invoices of this client
+            conn.execute(
+                "UPDATE facturas SET vendedor_id = ? WHERE cliente_id_xubio = ? AND vendedor_id IS NULL",
+                (body.vendedor_id, body.cliente_id_xubio),
+            )
     return {"ok": True}
 
 
