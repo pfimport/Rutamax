@@ -148,6 +148,23 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 .empty{text-align:center;padding:40px;color:var(--muted)}
 
 .fmt-currency{font-family:'Courier New',monospace}
+
+/* Por cobrar badge */
+.por-cobrar{background:#f59e0b11;border:1px solid #f59e0b44;border-radius:8px;
+  padding:8px 12px;margin-top:10px;font-size:12px;display:flex;
+  justify-content:space-between;align-items:center}
+.por-cobrar .label-pc{color:var(--yellow);font-weight:600}
+
+/* Checkbox en tabla */
+.cb-col{width:36px;text-align:center}
+input[type=checkbox]{width:auto;cursor:pointer}
+.bulk-bar{display:none;background:var(--surface2);border:1px solid var(--cyan);
+  border-radius:8px;padding:10px 16px;margin-bottom:12px;
+  align-items:center;gap:12px;flex-wrap:wrap}
+.bulk-bar.visible{display:flex}
+
+/* Gráfico evolución */
+#dash-evolucion{margin-top:24px}
 </style>
 </head>
 <body>
@@ -200,6 +217,15 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
 
       <div id="dash-cards" class="cards"></div>
 
+      <div id="dash-evolucion" style="display:none">
+        <div class="card">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <h3 style="margin:0">Evolución últimos 6 meses</h3>
+          </div>
+          <canvas id="chart-evolucion" height="70"></canvas>
+        </div>
+      </div>
+
       <div id="dash-sync-info" style="margin-top:8px;font-size:12px;color:var(--muted)"></div>
     </div>
 
@@ -218,6 +244,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
         <h2>Facturas</h2>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button class="btn btn-primary" onclick="openFacturaManual()">➕ Agregar Manual</button>
+          <button class="btn btn-secondary" onclick="exportarFacturasCSV()" title="Exportar facturas cobradas a CSV">📥 Exportar CSV</button>
           <div class="periodo">
             <select id="fact-mes" onchange="loadFacturas()">
               <option value="">Todos</option>
@@ -239,6 +266,11 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
           </label>
         </div>
       </div>
+      <div id="bulk-bar" class="bulk-bar">
+        <span id="bulk-count" style="color:var(--cyan);font-weight:600"></span>
+        <button class="btn btn-green btn-sm" onclick="abrirCobrarLote()">✓ Cobrar seleccionadas</button>
+        <button class="btn btn-secondary btn-sm" onclick="deseleccionarTodo()">✕ Cancelar</button>
+      </div>
       <div id="facturas-table"></div>
       <div class="pagination" id="fact-pag"></div>
     </div>
@@ -251,6 +283,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
           <select id="res-vendedor" onchange="loadResumenes()" style="width:200px">
             <option value="">Todos los vendedores</option>
           </select>
+          <button class="btn btn-secondary" onclick="exportarResumenCSV()" title="Exportar resumen filtrado a CSV">📥 Exportar CSV</button>
           <button class="btn btn-primary" onclick="openModalResumen()">+ Generar Resumen</button>
         </div>
       </div>
@@ -477,6 +510,25 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--cyan)}
   </div>
 </div>
 
+<!-- Modal Cobrar Lote -->
+<div class="modal-bg" id="modal-cobrar-lote">
+  <div class="modal" style="max-width:400px">
+    <h2>Cobrar Seleccionadas</h2>
+    <p id="cobrar-lote-desc" style="color:var(--muted);font-size:13px;margin-bottom:16px"></p>
+    <div class="field">
+      <label>Fecha de cobro para todas</label>
+      <input type="date" id="cobrar-lote-fecha" style="width:100%"/>
+    </div>
+    <p style="color:var(--muted);font-size:12px;margin-top:8px">
+      El mes de esta fecha define el período de comisión para todas las facturas seleccionadas.
+    </p>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-cobrar-lote')">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarCobrarLote()">✓ Confirmar cobro</button>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Resumen -->
 <div class="modal-bg" id="modal-resumen">
   <div class="modal">
@@ -685,6 +737,12 @@ async function loadDashboard() {
       const saved = v.tiene_resumen_guardado
         ? `<span class="pill pill-green">💾 Guardado</span>` : '';
 
+      const porCobrarHtml = v.por_cobrar_cant > 0
+        ? `<div class="por-cobrar">
+            <span class="label-pc">⏳ Por cobrar (${v.por_cobrar_cant} fact.)</span>
+            <span class="fmt-currency" style="color:var(--yellow)">${fmt(v.por_cobrar_neto)}</span>
+           </div>` : '';
+
       cont.innerHTML += `
       <div class="card">
         <h3>${v.vendedor_nombre} ${saved}</h3>
@@ -704,6 +762,7 @@ async function loadDashboard() {
             <span style="color:var(--text)">${v.cant_facturas}</span>
           </div>
         </div>
+        ${porCobrarHtml}
         <div class="next-tier">${nextStr}</div>
         <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
           <button class="btn btn-secondary btn-sm" onclick="showTab('estadisticas');$('est-vendedor').value=${v.vendedor_id};loadEstadisticas()">
@@ -725,6 +784,7 @@ async function loadDashboard() {
       $('dash-sync-info').textContent =
         `Última sync: ${fecha} · +${d.ultimo_sync.facturas_nuevas} nuevas · actualiz. ${d.ultimo_sync.facturas_actualizadas}`;
     }
+    loadEvolucionChart();
   } catch(e) {
     $('dash-cards').innerHTML = `<div class="empty" style="color:var(--red)">${e.message}</div>`;
   }
@@ -900,10 +960,12 @@ async function loadFacturas() {
       $('fact-pag').innerHTML = '';
       return;
     }
+    $('bulk-bar').classList.remove('visible');
     cont.innerHTML = `
     <div class="tbl-wrap">
     <table>
       <thead><tr>
+        <th class="cb-col"></th>
         <th>Nro</th><th>Tipo</th><th>Fecha Emis.</th><th>Fecha Cobro</th>
         <th>Cliente</th><th>Neto</th><th>Estado</th><th>Vendedor</th><th></th>
       </tr></thead>
@@ -914,8 +976,12 @@ async function loadFacturas() {
         const netoStyle = esNC ? 'color:var(--red);font-weight:600' : '';
         const tipoLabel = f.tipo || '—';
         const cobrada = f.estado==='cobrada'||f.estado==='pagada';
+        const cbCell = (!cobrada && !esNC)
+          ? `<td class="cb-col"><input type="checkbox" class="cb-factura" value="${f.id}" onchange="actualizarBulkBar()"></td>`
+          : `<td class="cb-col"></td>`;
         return `
         <tr style="${rowStyle}">
+          ${cbCell}
           <td>${f.numero||'—'}</td>
           <td>${tipoLabel}${esNC ? ' <span class="pill" style="background:#ef444422;color:var(--red);font-size:10px">NC</span>' : ''}</td>
           <td>${f.fecha_emision?.slice(0,10)||'—'}</td>
@@ -1517,6 +1583,144 @@ async function pollSyncEstado() {
       $('sync-icon').textContent = '⟳';
       return;
     }
+  }
+}
+
+// ── Cobro en lote ─────────────────────────────────────────────────────────────
+function getSelectedIds() {
+  return [...document.querySelectorAll('.cb-factura:checked')].map(cb => parseInt(cb.value));
+}
+
+function actualizarBulkBar() {
+  const ids = getSelectedIds();
+  if (ids.length > 0) {
+    $('bulk-count').textContent = `${ids.length} factura(s) seleccionada(s)`;
+    $('bulk-bar').classList.add('visible');
+  } else {
+    $('bulk-bar').classList.remove('visible');
+  }
+}
+
+function deseleccionarTodo() {
+  document.querySelectorAll('.cb-factura').forEach(cb => cb.checked = false);
+  $('bulk-bar').classList.remove('visible');
+}
+
+function abrirCobrarLote() {
+  const ids = getSelectedIds();
+  if (!ids.length) { toast('Seleccioná al menos una factura', 'err'); return; }
+  $('cobrar-lote-desc').textContent = `Se marcarán como cobradas ${ids.length} factura(s).`;
+  $('cobrar-lote-fecha').value = new Date().toISOString().slice(0, 10);
+  openModal('modal-cobrar-lote');
+}
+
+async function confirmarCobrarLote() {
+  const ids = getSelectedIds();
+  const fecha = $('cobrar-lote-fecha').value;
+  if (!fecha) { toast('Elegí una fecha de cobro', 'err'); return; }
+  if (!ids.length) { toast('Sin facturas seleccionadas', 'err'); return; }
+  try {
+    const r = await api('/facturas/cobrar-lote', {
+      method: 'POST',
+      body: JSON.stringify({ ids, fecha_cobro: fecha })
+    });
+    toast(`${r.actualizadas} factura(s) marcadas como cobradas`);
+    closeModal('modal-cobrar-lote');
+    deseleccionarTodo();
+    loadFacturas();
+    loadDashboard();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Exportar CSV ──────────────────────────────────────────────────────────────
+function exportarFacturasCSV() {
+  const mes = $('fact-mes').value;
+  const anio = $('fact-anio').value;
+  const vid = $('fact-vendedor').value;
+  let url = '/api/facturas/exportar?';
+  if (mes) url += `mes=${encodeURIComponent(mes)}&`;
+  if (anio) url += `anio=${encodeURIComponent(anio)}&`;
+  if (vid) url += `vendedor_id=${encodeURIComponent(vid)}&`;
+  window.location.href = url;
+}
+
+function exportarResumenCSV() {
+  const vid = $('res-vendedor').value;
+  const mes = $('dash-mes').value;
+  const anio = $('dash-anio').value;
+  let url = '/api/facturas/exportar?';
+  if (mes) url += `mes=${encodeURIComponent(mes)}&`;
+  if (anio) url += `anio=${encodeURIComponent(anio)}&`;
+  if (vid) url += `vendedor_id=${encodeURIComponent(vid)}&`;
+  window.location.href = url;
+}
+
+// ── Gráfico Evolución ─────────────────────────────────────────────────────────
+async function loadEvolucionChart() {
+  const now = new Date();
+  const anio = now.getFullYear();
+  const mesActual = now.getMonth() + 1;
+
+  const ultimos6 = [];
+  for (let i = 5; i >= 0; i--) {
+    let m = mesActual - i;
+    let a = anio;
+    if (m <= 0) { m += 12; a--; }
+    ultimos6.push({ mes: m, anio: a, label: MESES[m] });
+  }
+
+  try {
+    const d = await api(`/estadisticas?anio=${anio}`);
+    let dPrev = null;
+    if (ultimos6.some(x => x.anio < anio)) {
+      dPrev = await api(`/estadisticas?anio=${anio - 1}`);
+    }
+
+    const vendedores = [...new Set(d.ventas_por_mes.map(x => x.vendedor))];
+    if (dPrev) {
+      dPrev.ventas_por_mes.forEach(x => {
+        if (!vendedores.includes(x.vendedor)) vendedores.push(x.vendedor);
+      });
+    }
+
+    const colores = ['#00d4ff', '#7c3aed', '#10b981', '#f59e0b', '#ef4444', '#06b6d4'];
+    const datasets = vendedores.map((nombre, idx) => ({
+      label: nombre,
+      backgroundColor: colores[idx % colores.length] + '99',
+      borderColor: colores[idx % colores.length],
+      borderWidth: 1,
+      data: ultimos6.map(({ mes, anio: a }) => {
+        const src = a === anio ? d.ventas_por_mes : (dPrev?.ventas_por_mes || []);
+        const row = src.find(x => x.vendedor === nombre && x.mes === mes);
+        return row?.total_neto || 0;
+      })
+    }));
+
+    const hayDatos = datasets.some(ds => ds.data.some(v => v > 0));
+    if (hayDatos) {
+      $('dash-evolucion').style.display = '';
+      if (charts.evolucion) { charts.evolucion.destroy(); delete charts.evolucion; }
+      charts.evolucion = new Chart($('chart-evolucion'), {
+        type: 'bar',
+        data: { labels: ultimos6.map(x => x.label), datasets },
+        options: {
+          responsive: true,
+          scales: {
+            x: { stacked: true, ticks: { color: '#94a3b8' } },
+            y: {
+              stacked: true,
+              ticks: { callback: v => '$' + v.toLocaleString('es-AR'), color: '#94a3b8' },
+              grid: { color: '#2a2f45' }
+            }
+          },
+          plugins: { legend: { labels: { color: '#94a3b8' } } }
+        }
+      });
+    } else {
+      $('dash-evolucion').style.display = 'none';
+    }
+  } catch(e) {
+    $('dash-evolucion').style.display = 'none';
   }
 }
 

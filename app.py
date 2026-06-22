@@ -1,3 +1,5 @@
+import csv
+import io
 import json
 import asyncio
 from datetime import datetime, date
@@ -6,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import FastAPI, HTTPException, BackgroundTasks
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse, FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -316,6 +318,93 @@ def asignar_vendedor_a_factura(fid: int, body: AsignarVendedor):
 
 class MarcarCobradaRequest(BaseModel):
     fecha_cobro: str  # YYYY-MM-DD
+
+
+class CobrarLoteRequest(BaseModel):
+    ids: list
+    fecha_cobro: str  # YYYY-MM-DD
+
+
+@app.post("/api/facturas/cobrar-lote")
+def cobrar_lote(body: CobrarLoteRequest):
+    try:
+        dt = datetime.fromisoformat(body.fecha_cobro[:10])
+        mes, anio = dt.month, dt.year
+    except Exception:
+        raise HTTPException(400, "Fecha inválida, usar formato YYYY-MM-DD")
+    ids = [int(i) for i in body.ids]
+    if not ids:
+        raise HTTPException(400, "Sin facturas para cobrar")
+    ph = ",".join("?" * len(ids))
+    with get_conn() as conn:
+        r = conn.execute(
+            f"""UPDATE facturas SET estado='cobrada', fecha_cobro=?,
+                periodo_cobro_mes=?, periodo_cobro_anio=?
+                WHERE id IN ({ph}) AND neto > 0 AND estado NOT IN ('cobrada','pagada')""",
+            [body.fecha_cobro[:10], mes, anio, *ids],
+        )
+    return {"ok": True, "actualizadas": r.rowcount}
+
+
+@app.get("/api/facturas/exportar")
+def exportar_facturas_csv(
+    mes: Optional[int] = None,
+    anio: Optional[int] = None,
+    vendedor_id: Optional[int] = None,
+):
+    conditions = ["f.estado IN ('cobrada','pagada','cancelada')"]
+    params: list = []
+    if mes:
+        conditions.append("f.periodo_cobro_mes = ?")
+        params.append(mes)
+    if anio:
+        conditions.append("f.periodo_cobro_anio = ?")
+        params.append(anio)
+    if vendedor_id:
+        conditions.append("f.vendedor_id = ?")
+        params.append(vendedor_id)
+    where = "WHERE " + " AND ".join(conditions)
+
+    with get_conn() as conn:
+        rows = conn.execute(
+            f"""SELECT f.numero, f.tipo, f.fecha_emision, f.fecha_cobro,
+                       f.cliente_nombre, f.neto, f.iva, f.total,
+                       f.estado, f.periodo_cobro_mes, f.periodo_cobro_anio,
+                       v.nombre as vendedor_nombre
+                FROM facturas f
+                LEFT JOIN vendedores v ON f.vendedor_id = v.id
+                {where}
+                ORDER BY f.periodo_cobro_anio, f.periodo_cobro_mes, f.fecha_cobro""",
+            params,
+        ).fetchall()
+
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Número", "Tipo", "Fecha Emisión", "Fecha Cobro",
+        "Cliente", "Neto", "IVA", "Total",
+        "Estado", "Mes", "Año", "Vendedor",
+    ])
+    for r in rows:
+        writer.writerow([
+            r["numero"] or "", r["tipo"] or "",
+            r["fecha_emision"] or "", r["fecha_cobro"] or "",
+            r["cliente_nombre"] or "",
+            r["neto"] or 0, r["iva"] or 0, r["total"] or 0,
+            r["estado"] or "",
+            _mes_nombre(r["periodo_cobro_mes"]) if r["periodo_cobro_mes"] else "",
+            r["periodo_cobro_anio"] or "",
+            r["vendedor_nombre"] or "Sin asignar",
+        ])
+
+    nombre_mes = _mes_nombre(mes) if mes else "todos"
+    filename = f"comisiones_{nombre_mes}_{anio or 'todos'}.csv"
+    output.seek(0)
+    return StreamingResponse(
+        io.BytesIO(output.getvalue().encode("utf-8-sig")),  # utf-8-sig = BOM for Excel
+        media_type="text/csv",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @app.post("/api/facturas/{fid}/cobrar")
@@ -662,6 +751,15 @@ def dashboard(mes: int = None, anio: int = None):
                     next_tier = tramo
                     break
 
+            # Facturas emitidas (pendientes de cobro) in this period
+            por_cobrar = conn.execute(
+                """SELECT SUM(ABS(neto)) as total_neto, COUNT(*) as cant
+                   FROM facturas
+                   WHERE vendedor_id = ? AND periodo_cobro_mes = ? AND periodo_cobro_anio = ?
+                     AND estado = 'emitida' AND neto > 0""",
+                (v["id"], mes, anio),
+            ).fetchone()
+
             cards.append({
                 "vendedor_id": v["id"],
                 "vendedor_nombre": v["nombre"],
@@ -674,6 +772,8 @@ def dashboard(mes: int = None, anio: int = None):
                     "SELECT 1 FROM resumenes WHERE vendedor_id=? AND periodo_mes=? AND periodo_anio=?",
                     (v["id"], mes, anio),
                 ).fetchone() is not None,
+                "por_cobrar_neto": por_cobrar["total_neto"] or 0,
+                "por_cobrar_cant": por_cobrar["cant"] or 0,
             })
 
         sin_vendedor = conn.execute(
