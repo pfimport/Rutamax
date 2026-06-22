@@ -136,7 +136,8 @@ class XubioClient:
 
     def get_vendedores(self) -> list:
         try:
-            data = self._get("Vendedor")
+            # Confirmed endpoint name from Xubio API docs: "vendedor" (lowercase)
+            data = self._get("vendedor")
             raw = data if isinstance(data, list) else data.get("data", data.get("vendedores", []))
             return [
                 {
@@ -152,7 +153,8 @@ class XubioClient:
     # ── Clientes ─────────────────────────────────────────────────────────────
 
     def get_clientes(self, page: int = 1) -> dict:
-        data = self._get("Cliente", {"pagina": page, "pageSize": 100})
+        # Confirmed endpoint name from Xubio API docs: "cliente" (lowercase)
+        data = self._get("cliente", {"pagina": page, "pageSize": 100})
         raw = data if isinstance(data, list) else data.get("data", data.get("clientes", []))
         items = [
             {
@@ -178,12 +180,12 @@ class XubioClient:
         fd_ar = fmt_ar(fecha_desde)
         fh_ar = fmt_ar(fecha_hasta)
 
-        # Try multiple endpoint + param combinations until one works
+        # Confirmed endpoint from Xubio API docs: "ComprobanteDeVenta"
         attempts = [
-            ("ComprobanteVenta", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ComprobanteVenta", {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
-            ("Comprobante",      {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ComprobanteVenta", {"fecha_desde": fd_ar, "fecha_hasta": fh_ar, "page": page}),
+            ("ComprobanteDeVenta", {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("ComprobanteDeVenta", {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
+            ("ComprobanteVenta",   {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("Comprobante",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
         ]
         last_err = None
         for endpoint, params in attempts:
@@ -239,12 +241,12 @@ class XubioClient:
         fd_ar = fmt_ar(fecha_desde)
         fh_ar = fmt_ar(fecha_hasta)
 
+        # Confirmed endpoint from Xubio API docs: "cobranzaBean"
         attempts = [
+            ("cobranzaBean",    {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
+            ("cobranzaBean",    {"fechaDesde": fecha_desde, "fechaHasta": fecha_hasta, "pagina": page, "pageSize": 200}),
             ("Cobranza",        {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
             ("ReciboCobro",     {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("ReciboCobranza",  {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("CobranzaVenta",   {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
-            ("Cobro",           {"fechaDesde": fd_ar, "fechaHasta": fh_ar, "pagina": page, "pageSize": 200}),
         ]
         last_err = None
         for endpoint, params in attempts:
