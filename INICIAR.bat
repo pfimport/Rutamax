@@ -32,8 +32,10 @@ echo.
 echo  ============================================
 echo.
 
-REM Abrir el navegador luego de 3 segundos
-start /min cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000"
+REM Abrir el navegador luego de 3 segundos (no abre si es inicio automatico de Windows)
+if not "%1"=="silencioso" (
+    start /min cmd /c "timeout /t 3 /nobreak >nul && start http://localhost:8000"
+)
 
 python -m uvicorn app:app --host 127.0.0.1 --port 8000
 
