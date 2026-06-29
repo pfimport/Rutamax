@@ -2,6 +2,7 @@ import csv
 import io
 import json
 import asyncio
+import threading
 from datetime import datetime, date
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -47,6 +48,20 @@ def _mes_nombre(mes: int) -> str:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
+    # Sincronizar automáticamente al iniciar si Xubio está configurado
+    client_id = get_config("xubio_client_id")
+    client_secret = get_config("xubio_client_secret")
+    if client_id and client_secret:
+        def _auto_sync():
+            global _sync_running, _last_sync_result
+            _sync_running = True
+            try:
+                _last_sync_result = _do_sync(XubioClient(client_id, client_secret), 1)
+            except Exception as e:
+                _last_sync_result = {"error": str(e)}
+            finally:
+                _sync_running = False
+        threading.Thread(target=_auto_sync, daemon=True).start()
     yield
 
 
