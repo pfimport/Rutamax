@@ -113,12 +113,15 @@ details.disc .dc b{color:var(--txt);}
         <div class="f"><label>Precio FOB unitario <span class="u">USD</span></label><input class="inp" id="fob" type="number" value="10" oninput="calc()"></div>
         <div class="f"><label>Cantidad <span class="u">unid.</span></label><input class="inp" id="qty" type="number" value="100" oninput="calc()"></div>
         <div class="f"><label>Tipo de cambio importador <span class="u">ARS/USD</span></label><input class="inp" id="tc" type="number" value="1300" oninput="calc()"></div>
-        <div class="f"><label>Flete internacional total <span class="u">USD</span></label><input class="inp" id="flete" type="number" value="400" oninput="calc()"></div>
+        <div class="f"><label>Flete marítimo <span class="u">USD</span></label><input class="inp" id="flete" type="number" value="400" oninput="calc()"><div class="hint">Costo total del flete marítimo del pedido (no por unidad): contenedor, LCL, courier, etc.</div></div>
         <div class="f"><label>Seguro <span class="u">% s/FOB+flete</span></label><input class="inp" id="seguro" type="number" value="1" step="0.1" oninput="calc()"></div>
         <div class="f"><label>Gastos despacho + aduana + flete local <span class="u">ARS total</span></label><input class="inp" id="gastos" type="number" value="180000" oninput="calc()"></div>
 
         <div class="subhead">Tributos aduaneros (sobre CIF)</div>
-        <div class="f"><label>Derechos de importación <span class="u">%</span></label><input class="inp" id="derechos" type="number" value="16" step="0.5" oninput="calc()"><div class="hint">Según NCM. Suele ir de 0% a 35%.</div></div>
+        <div class="f full"><label>Código NCM / HS Code <span class="u">opcional</span></label><input class="inp" id="ncm" type="text" placeholder="ej. 8517.12.31 o solo 85" oninput="lookupNCM()">
+          <div class="hint" id="ncm-hint">Autocompleta el % de derechos por capítulo (referencia orientativa, <b style="color:var(--yel)">no oficial</b>). Verificá la posición exacta de 8 dígitos en el Arancel Integrado. <a href="https://www.afip.gob.ar/aduana/arancelintegrado/" target="_blank" rel="noopener">Abrir Arancel Integrado AFIP ↗</a></div>
+        </div>
+        <div class="f"><label>Derechos de importación <span class="u">%</span></label><input class="inp" id="derechos" type="number" value="16" step="0.5" oninput="calc()"></div>
         <div class="f"><label>Tasa estadística <span class="u">%</span></label><input class="inp" id="tasa" type="number" value="3" step="0.5" oninput="calc()"></div>
 
         <div class="subhead">IVA y percepciones (sobre base imponible)</div>
@@ -150,15 +153,26 @@ details.disc .dc b{color:var(--txt);}
   <div class="card" id="c3">
     <div class="card-h" onclick="tog('c3')"><div class="card-n">3</div><div class="card-t">Venta en Mercado Libre <span class="card-sub">· comisiones y envío</span></div><div class="chev">▾</div></div>
     <div class="card-body">
+      <div class="toggle-row" style="padding-top:0;">
+        <div><div class="tl">Conectar con la API pública de Mercado Libre</div><div class="ts">Busca la categoría real del producto y trae la comisión vigente en vivo. Si el navegador no puede conectarse (red/CORS), se usan los valores manuales de abajo sin romper nada.</div></div>
+        <div class="sw on" id="sw-api" onclick="tsw('sw-api')"></div>
+      </div>
+      <div class="f full" style="margin:12px 0;">
+        <label>Categoría del producto en ML</label>
+        <input class="inp" id="catq" type="text" placeholder="ej. auriculares bluetooth, mochila, funda de celular..." oninput="searchCategory()">
+        <div id="cat-suggest" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;"></div>
+        <div class="hint" id="cat-status" style="margin-top:6px;"></div>
+      </div>
+
       <div class="f full" style="margin-bottom:12px;"><label>Tipo de publicación</label>
         <div class="seg" id="seg-pub">
-          <button class="on" data-com="13" onclick="pub(this)">Clásica (~13%)</button>
-          <button data-com="16.5" onclick="pub(this)">Premium (~16,5%)</button>
+          <button class="on" data-com="13" data-lt="gold_special" onclick="pub(this)">Clásica (~13%)</button>
+          <button data-com="16.5" data-lt="gold_pro" onclick="pub(this)">Premium (~16,5%)</button>
         </div>
-        <div class="hint">La comisión exacta depende de la categoría (11,8%–17,14%). Ajustala abajo.</div>
+        <div class="hint">La comisión exacta depende de la categoría (11,8%–17,14%). Se autocompleta si conectás la API; también la podés ajustar a mano.</div>
       </div>
       <div class="grid">
-        <div class="f"><label>Comisión por venta <span class="u">%</span></label><input class="inp" id="com" type="number" value="13" step="0.1" oninput="calc()"></div>
+        <div class="f"><label>Comisión por venta <span class="u">%</span></label><input class="inp" id="com" type="number" value="13" step="0.1" oninput="apiOverrideCom=true;calc()"></div>
         <div class="f"><label>IVA sobre comisión y cargos <span class="u">%</span></label><input class="inp" id="ivaML" type="number" value="21" step="0.5" oninput="calc()"></div>
 
         <div class="f full"><label>Cuotas sin interés</label>
@@ -166,7 +180,9 @@ details.disc .dc b{color:var(--txt);}
             <button class="on" data-c="0" onclick="cuo(this)">Sin cuotas</button>
             <button data-c="5.75" onclick="cuo(this)">3 (+5,75%)</button>
             <button data-c="10.75" onclick="cuo(this)">6 (+10,75%)</button>
+            <button data-c="custom" onclick="cuo(this)">Otra</button>
           </div>
+          <input class="inp" id="cuoCustom" type="number" placeholder="% cargo por cuotas" style="display:none;margin-top:8px;" oninput="cuotasPct=parseFloat(this.value)||0;calc()">
         </div>
 
         <div class="subhead">Costo fijo por venta (por tramo de precio)</div>
@@ -191,8 +207,9 @@ details.disc .dc b{color:var(--txt);}
       <div class="seg" id="seg-mode" style="margin-bottom:14px;">
         <button class="on" data-m="reverse" onclick="mode(this)">Precio a partir de un margen</button>
         <button data-m="forward" onclick="mode(this)">Ganancia a partir de un precio</button>
+        <button data-m="fob" onclick="mode(this)">FOB a partir del precio final</button>
       </div>
-      <div id="box-reverse" class="grid">
+      <div id="box-margin" class="grid">
         <div class="f"><label>Margen objetivo</label>
           <div class="seg" id="seg-mtype" style="margin-bottom:0;">
             <button class="on" data-t="cost" onclick="mtype(this)">Markup s/costo</button>
@@ -201,8 +218,9 @@ details.disc .dc b{color:var(--txt);}
         </div>
         <div class="f"><label>Valor <span class="u">%</span></label><input class="inp" id="margin" type="number" value="40" step="1" oninput="calc()"></div>
       </div>
-      <div id="box-forward" class="grid" style="display:none;">
-        <div class="f full"><label>Precio de venta publicado <span class="u">ARS</span></label><input class="inp" id="priceIn" type="number" value="25000" oninput="calc()"></div>
+      <div id="box-price" class="grid" style="display:none;">
+        <div class="f full"><label>Precio de venta publicado en ML <span class="u">ARS</span></label><input class="inp" id="priceIn" type="number" value="25000" oninput="calc()"></div>
+        <div class="hint full" style="grid-column:1/-1;">En modo "FOB a partir del precio final" también se usa el margen objetivo de arriba para saber cuánto FOB podés pagar como máximo.</div>
       </div>
     </div>
   </div>
@@ -215,7 +233,9 @@ details.disc .dc b{color:var(--txt);}
     <div class="dc">
       <b>Lado importación (FOB → costo):</b> CIF = FOB×cantidad + flete + seguro. Sobre el CIF en pesos se aplican <b>Derechos</b> y <b>Tasa estadística</b>. La base imponible (CIF + derechos + tasa) genera <b>IVA</b>, <b>IVA adicional</b>, <b>percepción Ganancias</b> e <b>IIBB</b>. En modo <b>Responsable Inscripto</b> esos cuatro son crédito/saldo a favor recuperable, así que no cuentan como costo del margen; en <b>Monotributo</b> se suman como costo. Los gastos de despacho se prorratean por unidad.<br><br>
       <b>Lado Mercado Libre:</b> comisión = precio × %; se suma el <b>costo fijo</b> del tramo, el <b>cargo por cuotas</b> y el <b>IVA</b> sobre esos tres. Si el precio llega al umbral de envío gratis, se resta el envío que absorbe el vendedor. En Responsable Inscripto la facturación se toma neta de IVA (precio ÷ 1,21) y el IVA de las comisiones es crédito.<br><br>
-      <b>Modo inverso:</b> se busca numéricamente el precio que deja exactamente tu margen objetivo, respetando los saltos de costo fijo y del umbral de envío.<br><br>
+      <b>Modo "Precio a partir de un margen":</b> se busca numéricamente el precio que deja exactamente tu margen objetivo, respetando los saltos de costo fijo y del umbral de envío. <b>Modo "FOB a partir del precio final":</b> fijás el precio ya publicado en ML y el margen que necesitás, y se despeja el FOB unitario máximo que podés pagarle al proveedor — útil para estimar a qué precio están comprando tus competidores.<br><br>
+      <b>Código NCM / HS Code:</b> autocompleta el % de derechos con una tabla de referencia propia por capítulo (2 dígitos). <b>No es una consulta oficial en vivo</b> — no existe una API pública de AFIP para eso — así que es solo un punto de partida; siempre verificá la posición arancelaria completa (8 dígitos) en el Arancel Integrado de AFIP antes de decidir.<br><br>
+      <b>Comisión de Mercado Libre:</b> si conectás la categoría, la calculadora intenta traer la comisión vigente en vivo desde la API pública de ML (sin login) y la recalcula cada vez que cambiás precio, categoría o tipo de publicación. Si tu navegador no puede conectarse (cambios de ML, red, CORS), cae automáticamente en los valores manuales sin interrumpir el cálculo. El cargo por cuotas sin interés no tiene una API pública, así que siempre se carga a mano.<br><br>
       Los valores por defecto son referencias de 2026 y <b>ML/ARCA los actualizan seguido</b>: verificá comisión, costo fijo y envío en tu cuenta antes de decidir.
     </div>
   </details>
@@ -231,18 +251,157 @@ const $=id=>document.getElementById(id);
 const num=id=>parseFloat($(id).value)||0;
 const ars=n=>'$'+Math.round(n).toLocaleString('es-AR');
 const pct=n=>(n*100).toFixed(1).replace('.',',')+'%';
+const escHtml=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let RI=true, cuotasPct=0, calcMode='reverse', mType='cost';
+let apiOn=true, apiOverrideCom=false;
+let apiCategoryId=null, apiCategoryName='', apiFees=null;
+let catTimer=null, feeTimer=null, lastFeePrice=null, lastPrice=30000;
 
 function tog(id){$(id).classList.toggle('col');}
-function tsw(id){const e=$(id);e.classList.toggle('on');RI=$('sw-ri').classList.contains('on');calc();}
-function pub(b){document.querySelectorAll('#seg-pub button').forEach(x=>x.classList.remove('on'));b.classList.add('on');$('com').value=b.dataset.com;calc();}
-function cuo(b){document.querySelectorAll('#seg-cuo button').forEach(x=>x.classList.remove('on'));b.classList.add('on');cuotasPct=parseFloat(b.dataset.c);calc();}
-function mode(b){document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');calcMode=b.dataset.m;$('box-reverse').style.display=calcMode==='reverse'?'':'none';$('box-forward').style.display=calcMode==='forward'?'':'none';calc();}
+function tsw(id){
+  const e=$(id); e.classList.toggle('on');
+  if(id==='sw-ri'){RI=$('sw-ri').classList.contains('on');}
+  if(id==='sw-api'){
+    apiOn=$('sw-api').classList.contains('on');
+    if(!apiOn){$('cat-status').textContent='Modo manual: cargá la comisión a mano abajo.';$('cat-suggest').innerHTML='';apiFees=null;}
+    else if(apiCategoryId){fetchFees(lastPrice);} else {$('cat-status').textContent='';}
+  }
+  calc();
+}
+function pub(b){
+  document.querySelectorAll('#seg-pub button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  if(!apiOverrideCom){$('com').value=b.dataset.com;}
+  applyApiFeeForCurrentListing();
+  calc();
+}
+function cuo(b){
+  document.querySelectorAll('#seg-cuo button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  if(b.dataset.c==='custom'){$('cuoCustom').style.display='';cuotasPct=parseFloat($('cuoCustom').value)||0;}
+  else{$('cuoCustom').style.display='none';cuotasPct=parseFloat(b.dataset.c);}
+  calc();
+}
+function mode(b){
+  document.querySelectorAll('#seg-mode button').forEach(x=>x.classList.remove('on'));b.classList.add('on');
+  calcMode=b.dataset.m;
+  $('box-margin').style.display=(calcMode==='reverse'||calcMode==='fob')?'':'none';
+  $('box-price').style.display=(calcMode==='forward'||calcMode==='fob')?'':'none';
+  calc();
+}
 function mtype(b){document.querySelectorAll('#seg-mtype button').forEach(x=>x.classList.remove('on'));b.classList.add('on');mType=b.dataset.t;calc();}
 
-// ---- Landed cost from FOB (per unit, real cost for margin) ----
-function importCost(){
-  const fob=num('fob'), qty=Math.max(1,num('qty')), tc=num('tc'), flete=num('flete');
+// ========== NCM / HS Code: tabla de referencia (orientativa, NO oficial) ==========
+const NCM_TABLE=[
+ ['84','Máquinas y aparatos mecánicos, informática',16],['85','Máquinas eléctricas, celulares, audio/video',20],
+ ['61','Prendas de vestir de punto',35],['62','Prendas de vestir, no de punto',35],
+ ['63','Artículos textiles confeccionados (hogar, blanco)',35],['64','Calzado',35],
+ ['42','Marroquinería, bolsos, mochilas, valijas',26],['71','Joyería, bijouterie, piedras preciosas',20],
+ ['91','Relojería',20],['94','Muebles, iluminación, colchones',20],
+ ['95','Juguetes, juegos, artículos deportivos',20],['39','Manufacturas de plástico',18],
+ ['73','Manufacturas de fundición, hierro o acero',16],['82','Herramientas y cuchillería',16],
+ ['83','Manufacturas diversas de metal',16],['90','Instrumentos ópticos, médicos, de precisión',12],
+ ['87','Vehículos y autopartes',18],['33','Cosmética y perfumería',18],
+ ['34','Jabones, ceras, velas, limpieza',16],['48','Papel y cartón',14],
+ ['49','Libros, impresos (muchos ítems 0%)',0],['69','Cerámica',18],
+ ['70','Vidrio y manufacturas de vidrio',18],['96','Manufacturas diversas (lapiceras, cepillos, etc.)',18],
+ ['44','Madera y manufacturas de madera',14],['76','Aluminio y manufacturas',16],
+ ['40','Caucho y manufacturas',16],['65','Sombreros y artículos de gorrería',20],
+ ['66','Paraguas, bastones',20],['67','Plumas, flores artificiales',20],
+ ['68','Manufacturas de piedra, yeso, cemento',16],['72','Fundición, hierro y acero (materia prima)',12],
+ ['74','Cobre y manufacturas',14],['81','Otros metales comunes',14],
+ ['88','Aeronáutica',2],['89','Barcos y embarcaciones',14],
+ ['92','Instrumentos musicales',20],['97','Objetos de arte y colección',0],
+];
+function lookupNCM(){
+  const raw=$('ncm').value.replace(/[^0-9]/g,'');
+  const hint=$('ncm-hint');
+  const base='Autocompleta el % de derechos por capítulo (referencia orientativa, <b style="color:var(--yel)">no oficial</b>). Verificá la posición exacta de 8 dígitos en el Arancel Integrado. <a href="https://www.afip.gob.ar/aduana/arancelintegrado/" target="_blank" rel="noopener">Abrir Arancel Integrado AFIP ↗</a>';
+  if(raw.length<2){hint.innerHTML=base;return;}
+  const chap=raw.slice(0,2);
+  const row=NCM_TABLE.find(r=>r[0]===chap);
+  if(row){
+    $('derechos').value=row[2];
+    hint.innerHTML=`📎 Capítulo ${chap} — <b style="color:var(--txt)">${row[1]}</b>: ~${row[2]}% de referencia (ya aplicado abajo, editable). <span style="color:var(--yel)">Valor orientativo por capítulo, no la posición NCM exacta.</span> <a href="https://www.afip.gob.ar/aduana/arancelintegrado/" target="_blank" rel="noopener">Verificar en AFIP ↗</a>`;
+  } else {
+    hint.innerHTML=`No tengo una referencia cargada para el capítulo ${chap}. Cargá el % de derechos a mano. <a href="https://www.afip.gob.ar/aduana/arancelintegrado/" target="_blank" rel="noopener">Buscar en el Arancel Integrado AFIP ↗</a>`;
+  }
+  calc();
+}
+
+// ========== Mercado Libre: API pública en vivo, con fallback a manual ==========
+function searchCategory(){
+  clearTimeout(catTimer);
+  const q=$('catq').value.trim();
+  const box=$('cat-suggest'), status=$('cat-status');
+  if(!apiOn){status.textContent='API desconectada — modo manual.';box.innerHTML='';return;}
+  if(q.length<3){box.innerHTML='';status.textContent='';return;}
+  status.textContent='Buscando categoría...';
+  catTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://api.mercadolibre.com/sites/MLA/domain_discovery/search?limit=6&q=${encodeURIComponent(q)}`);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      if(!Array.isArray(data)||!data.length){status.textContent='Sin resultados en la API. Elegí la comisión manualmente abajo.';box.innerHTML='';return;}
+      status.textContent='Elegí la categoría más parecida:';
+      box.innerHTML=data.map(d=>`<button type="button" class="btns cat-opt" style="font-size:11px;padding:6px 10px;" data-id="${escHtml(d.category_id)}" data-name="${escHtml(d.category_name)}">${escHtml(d.category_name)}</button>`).join('');
+    }catch(err){
+      status.textContent='⚠️ No se pudo conectar con la API de ML (red/CORS). Seguís pudiendo cargar todo a mano abajo.';
+      box.innerHTML='';
+    }
+  },500);
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const box=document.getElementById('cat-suggest');
+  if(box) box.addEventListener('click',e=>{
+    const b=e.target.closest('.cat-opt'); if(!b) return;
+    selectCategory(b.dataset.id,b.dataset.name);
+  });
+});
+function selectCategory(id,name){
+  apiCategoryId=id; apiCategoryName=name; apiOverrideCom=false;
+  $('cat-suggest').innerHTML='';
+  $('cat-status').innerHTML=`✅ Categoría: <b style="color:var(--txt)">${escHtml(name)}</b> · conectando comisión...`;
+  fetchFees(lastPrice);
+}
+function fetchFees(price){
+  if(!apiOn||!apiCategoryId) return;
+  lastFeePrice=price;
+  clearTimeout(feeTimer);
+  feeTimer=setTimeout(async()=>{
+    try{
+      const r=await fetch(`https://api.mercadolibre.com/sites/MLA/listing_prices?price=${Math.max(1,Math.round(price))}&category_id=${apiCategoryId}`);
+      if(!r.ok) throw new Error('HTTP '+r.status);
+      const data=await r.json();
+      const fees={};
+      (Array.isArray(data)?data:[]).forEach(lt=>{
+        if(lt&&lt.listing_type_id) fees[lt.listing_type_id]={
+          total:lt.sale_fee_amount||0,
+          percent:(lt.sale_fee_details&&lt.sale_fee_details.percentage_fee)||null
+        };
+      });
+      apiFees=Object.keys(fees).length?fees:null;
+      $('cat-status').innerHTML=apiFees
+        ?`✅ Categoría: <b style="color:var(--txt)">${escHtml(apiCategoryName)}</b> · comisión conectada en vivo`
+        :`✅ Categoría: <b style="color:var(--txt)">${escHtml(apiCategoryName)}</b> · la API no devolvió tarifas para este precio, usá los valores manuales`;
+      applyApiFeeForCurrentListing();
+    }catch(err){
+      apiFees=null;
+      $('cat-status').innerHTML=`✅ Categoría: <b style="color:var(--txt)">${escHtml(apiCategoryName)}</b> · ⚠️ no pude traer la comisión en vivo (red/CORS) — usá los valores manuales`;
+      calc();
+    }
+  },450);
+}
+function applyApiFeeForCurrentListing(){
+  if(!apiFees){calc();return;}
+  const ltBtn=document.querySelector('#seg-pub button.on');
+  const lt=ltBtn?ltBtn.dataset.lt:'gold_special';
+  const fee=apiFees[lt];
+  if(fee&&fee.percent!=null&&!apiOverrideCom) $('com').value=fee.percent;
+  calc();
+}
+
+// ========== Import: FOB -> costo puesto en Argentina ==========
+function importCost(fobOverride){
+  const fob=(fobOverride!=null?fobOverride:num('fob')), qty=Math.max(1,num('qty')), tc=num('tc'), flete=num('flete');
   const seguroPct=num('seguro')/100;
   const fobTot=fob*qty;
   const seguro=(fobTot+flete)*seguroPct;
@@ -260,10 +419,10 @@ function importCost(){
   const desembolso=cif+derechos+tasa+recuperable+gastos;      // total pagado en aduana
   const costoReal=cif+derechos+tasa+gastos+(RI?0:recuperable); // costo que pesa en el margen
   const unit=costoReal/qty + num('localUnit') + num('localLog');
-  return {qty,cif,derechos,tasa,ivaImp,ivaAd,gan,iibb,gastos,recuperable,desembolso,costoReal,unit,seguro:seguro*tc};
+  return {qty,cif,derechos,tasa,ivaImp,ivaAd,gan,iibb,gastos,recuperable,desembolso,costoReal,unit,fob};
 }
 
-// ---- Fixed cost tier ----
+// ========== Costo fijo ML por tramo (fallback manual) ==========
 function costoFijo(p){
   if(p>=num('t3')) return 0;
   if(p>=num('t2')) return num('cf3');
@@ -271,18 +430,26 @@ function costoFijo(p){
   return num('cf1');
 }
 
-// ---- ML fees for a given price ----
+// ========== Cargos de ML para un precio dado ==========
 function mlFees(p){
-  const com=p*num('com')/100;
+  const ltBtn=document.querySelector('#seg-pub button.on');
+  const lt=ltBtn?ltBtn.dataset.lt:'gold_special';
+  const apiFee=apiOn&&apiFees&&apiFees[lt];
+  let com,cf,fromApi=false;
+  if(apiFee&&apiFee.total){
+    com=apiFee.total; cf=0; fromApi=true; // la API ya devuelve comisión + costo fijo combinados
+  }else{
+    com=p*num('com')/100;
+    cf=costoFijo(p);
+  }
   const cuo=p*cuotasPct/100;
-  const cf=costoFijo(p);
   const iva=(com+cuo+cf)*num('ivaML')/100;
   const envio=p>=num('t3')?num('envio'):0;
   const iibbV=p*num('iibbVenta')/100;
-  return {com,cuo,cf,iva,envio,iibbV};
+  return {com,cuo,cf,iva,envio,iibbV,fromApi};
 }
 
-// ---- Net profit for a given price (given unit cost) ----
+// ========== Ganancia neta para un precio dado ==========
 function profit(p,unit){
   const f=mlFees(p);
   const ingreso=RI?p/1.21:p;                 // facturación neta de IVA si RI
@@ -291,31 +458,57 @@ function profit(p,unit){
   return ingreso-unit-fees;
 }
 
-// ---- Solve price for target margin ----
+// ========== Modo 1: precio a partir de un margen objetivo ==========
 function solvePrice(unit){
   const target=num('margin')/100;
-  // objective: profit(p)/base - target = 0, base = unit (cost) or p (price)
   const g=p=>{const pr=profit(p,unit);return mType==='cost'?pr-target*unit:pr-target*(RI?p/1.21:p);};
   let lo=unit*0.5, hi=unit*20+50000;
   for(let i=0;i<80;i++){const mid=(lo+hi)/2;if(g(mid)>0)hi=mid;else lo=mid;}
   return (lo+hi)/2;
 }
 
+// ========== Modo 3: FOB máximo a partir de un precio final ya publicado ==========
+function solveFob(price){
+  const target=num('margin')/100;
+  const g=fob=>{
+    const ic=importCost(fob);
+    const pr=profit(price,ic.unit);
+    return mType==='cost'?pr-target*ic.unit:pr-target*(RI?price/1.21:price);
+  };
+  if(g(0)<=0) return 0; // ni regalado se llega al margen pedido a ese precio
+  let lo=0, hi=Math.max(price/(num('qty')||1),1)*5+1000;
+  for(let i=0;i<60 && g(hi)>0;i++){hi*=1.6;}
+  for(let i=0;i<80;i++){const mid=(lo+hi)/2;if(g(mid)>0)lo=mid;else hi=mid;}
+  return Math.max(0,(lo+hi)/2);
+}
+
 function calc(){
-  const ic=importCost();
-  let price;
-  if(calcMode==='reverse') price=solvePrice(ic.unit);
-  else price=num('priceIn');
+  let ic, price;
+  if(calcMode==='reverse'){
+    ic=importCost(); price=solvePrice(ic.unit);
+  } else if(calcMode==='forward'){
+    ic=importCost(); price=num('priceIn');
+  } else { // fob
+    price=num('priceIn');
+    const fob=solveFob(price);
+    ic=importCost(fob);
+  }
+  lastPrice=price;
   const f=mlFees(price);
   const pr=profit(price,ic.unit);
   const ingreso=RI?price/1.21:price;
   const marginCost=ic.unit>0?pr/ic.unit:0;
   const marginPrice=price>0?pr/price:0;
-  const feesTotal=f.com+f.cuo+f.cf+(RI?0:f.iva)+f.envio+f.iibbV;
 
-  const bigLbl=calcMode==='reverse'?'Precio de venta a publicar':'Precio publicado';
-  let html=`<div class="res-main"><div class="res-lbl">${bigLbl}</div><div class="res-big">${ars(price)}</div>`;
-  html+=`<div class="res-sub">Costo unitario puesto en AR: <b style="color:var(--txt)">${ars(ic.unit)}</b> · Comisión ${num('com').toString().replace('.',',')}%${cuotasPct?' · cuotas sin interés':''} · ${RI?'Resp. Inscripto':'Monotributo'}</div></div>`;
+  let html='';
+  if(calcMode==='fob'){
+    html+=`<div class="res-main"><div class="res-lbl">FOB unitario máximo a pagar</div><div class="res-big">US$ ${ic.fob.toLocaleString('es-AR',{maximumFractionDigits:2})}</div>`;
+    html+=`<div class="res-sub">Para que ese producto se venda a ${ars(price)} en ML y te deje tu margen objetivo, tenés que comprarlo FOB a ese valor o menos.</div></div>`;
+  } else {
+    const bigLbl=calcMode==='reverse'?'Precio de venta a publicar':'Precio publicado';
+    html+=`<div class="res-main"><div class="res-lbl">${bigLbl}</div><div class="res-big">${ars(price)}</div>`;
+    html+=`<div class="res-sub">Costo unitario puesto en AR: <b style="color:var(--txt)">${ars(ic.unit)}</b> · Comisión ${f.fromApi?'API ML en vivo':num('com').toString().replace('.',',')+'%'}${cuotasPct?' · cuotas sin interés':''} · ${RI?'Resp. Inscripto':'Monotributo'}</div></div>`;
+  }
 
   html+=`<div class="kpis">
     <div class="kpi"><div class="kpi-v ${pr>=0?'g':'r'}">${ars(pr)}</div><div class="kpi-l">Ganancia neta / unidad</div></div>
@@ -328,8 +521,8 @@ function calc(){
   if(RI) html+=`<div class="brow sub"><div class="bl">− IVA débito (÷1,21) <span class="tag rec">neto</span></div><div class="bv">${ars(price-ingreso)}</div></div>
     <div class="brow"><div class="bl">Facturación neta</div><div class="bv">${ars(ingreso)}</div></div>`;
   html+=`
-    <div class="brow neg"><div class="bl">− Costo del producto</div><div class="bv">−${ars(ic.unit)}</div></div>
-    <div class="brow neg"><div class="bl">− Comisión ML <small>${num('com').toString().replace('.',',')}%</small></div><div class="bv">−${ars(f.com)}</div></div>`;
+    <div class="brow neg"><div class="bl">− Costo del producto ${calcMode==='fob'?`<small>(FOB US$${ic.fob.toFixed(2)} × ${ic.qty})</small>`:''}</div><div class="bv">−${ars(ic.unit)}</div></div>
+    <div class="brow neg"><div class="bl">− ${f.fromApi?'Comisión + costo fijo ML':'Comisión ML'} ${f.fromApi?'<span class="tag rec">API</span>':`<small>${num('com').toString().replace('.',',')}%</small>`}</div><div class="bv">−${ars(f.com)}</div></div>`;
   if(f.cuo>0) html+=`<div class="brow neg"><div class="bl">− Cargo por cuotas</div><div class="bv">−${ars(f.cuo)}</div></div>`;
   if(f.cf>0) html+=`<div class="brow neg"><div class="bl">− Costo fijo por venta</div><div class="bv">−${ars(f.cf)}</div></div>`;
   html+=`<div class="brow ${RI?'':'neg'}"><div class="bl">${RI?'':'− '}IVA s/comisión <span class="tag ${RI?'rec':'cost'}">${RI?'crédito':'costo'}</span></div><div class="bv">${RI?ars(f.iva):'−'+ars(f.iva)}</div></div>`;
@@ -340,6 +533,7 @@ function calc(){
 
   // import breakdown
   html+=`<details class="disc" style="margin-top:12px;"><summary>🚢 Desglose de importación (${ic.qty} unid.)</summary><div class="break" style="padding:6px 0;">
+    <div class="brow"><div class="bl">FOB unitario</div><div class="bv">US$ ${ic.fob.toLocaleString('es-AR',{maximumFractionDigits:2})}</div></div>
     <div class="brow"><div class="bl">Valor CIF</div><div class="bv">${ars(ic.cif)}</div></div>
     <div class="brow sub"><div class="bl">Derechos importación</div><div class="bv">${ars(ic.derechos)}</div></div>
     <div class="brow sub"><div class="bl">Tasa estadística</div><div class="bv">${ars(ic.tasa)}</div></div>
@@ -350,10 +544,12 @@ function calc(){
     <div class="brow"><div class="bl">Costo unitario</div><div class="bv">${ars(ic.unit)}</div></div>
   </div></details>`;
 
-  if(pr<0) html+=`<div class="warn">⚠️ Con estos parámetros la operación da pérdida. Subí el precio, bajá el costo FOB/flete o revisá la comisión.</div>`;
-  else if(price>0 && price<num('t3') && f.cf>0) html+=`<div class="warn">💡 Estás debajo del umbral de envío gratis (${ars(num('t3'))}): pagás costo fijo pero te ahorrás el envío. Probá cruzar el umbral para comparar.</div>`;
+  if(calcMode==='fob' && ic.fob<=0.009) html+=`<div class="warn">⚠️ Ni comprando el producto gratis (FOB $0) se llega al margen objetivo a ese precio de venta. Subí el precio final o bajá el margen buscado.</div>`;
+  else if(pr<0) html+=`<div class="warn">⚠️ Con estos parámetros la operación da pérdida. Subí el precio, bajá el costo FOB/flete o revisá la comisión.</div>`;
+  else if(calcMode!=='fob' && price>0 && price<num('t3') && f.cf>0) html+=`<div class="warn">💡 Estás debajo del umbral de envío gratis (${ars(num('t3'))}): pagás costo fijo pero te ahorrás el envío. Probá cruzar el umbral para comparar.</div>`;
 
   $('result').innerHTML=html;
+  if(apiOn&&apiCategoryId&&(lastFeePrice==null||Math.abs(price-lastFeePrice)/Math.max(price,1)>0.01)) fetchFees(price);
 }
 calc();
 </script>
