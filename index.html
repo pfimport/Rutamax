@@ -564,6 +564,10 @@ input[type=checkbox]{width:auto;cursor:pointer}
         <select id="res-anio-sel"></select>
       </div>
       <div class="field" style="grid-column:1/-1">
+        <label>Corte por fecha <span style="color:var(--muted);font-weight:400">(opcional — si lo dejás vacío incluye todo el mes)</span></label>
+        <input type="date" id="res-fecha-hasta" placeholder="Hasta qué fecha incluir facturas cobradas"/>
+      </div>
+      <div class="field" style="grid-column:1/-1">
         <label>Vendedor (dejar vacío = todos)</label>
         <select id="res-vendedor-sel">
           <option value="">Todos los vendedores</option>
@@ -577,6 +581,23 @@ input[type=checkbox]{width:auto;cursor:pointer}
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-resumen')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarResumen()">Generar y Guardar</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal Marcar Comisión Pagada -->
+<div class="modal-bg" id="modal-pagar-comision">
+  <div class="modal" style="max-width:380px">
+    <h2>💰 Registrar Pago de Comisión</h2>
+    <input type="hidden" id="pagar-resumen-id"/>
+    <p id="pagar-desc" style="color:var(--muted);font-size:13px;margin-bottom:16px"></p>
+    <div class="field">
+      <label>Fecha en que pagaste la comisión</label>
+      <input type="date" id="pagar-fecha" style="width:100%"/>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-pagar-comision')">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarPagarComision()">✓ Confirmar pago</button>
     </div>
   </div>
 </div>
@@ -1217,21 +1238,33 @@ async function loadResumenes() {
     <table>
       <thead><tr>
         <th>Vendedor</th><th>Período</th><th>Cobrado Neto</th>
-        <th>% Tramo</th><th>Comisión</th><th>Facturas</th><th>Guardado</th><th></th>
+        <th>% Tramo</th><th>Comisión</th><th>Facturas</th><th>Estado pago</th><th></th>
       </tr></thead>
       <tbody>
-      ${data.map(r => `
+      ${data.map(r => {
+        const pagada = r.comision_pagada;
+        const estadoPago = pagada
+          ? `<span class="pill pill-green">✓ Pagada ${r.fecha_pago_comision?.slice(0,10)||''}</span>`
+          : `<span class="pill pill-yellow">Pendiente</span>`;
+        const corte = r.fecha_corte ? ` <span style="font-size:11px;color:var(--muted)">corte ${r.fecha_corte.slice(0,10)}</span>` : '';
+        return `
         <tr>
           <td style="font-weight:600">${r.vendedor_nombre}</td>
-          <td>${MESES[r.periodo_mes]} ${r.periodo_anio}</td>
+          <td>${MESES[r.periodo_mes]} ${r.periodo_anio}${corte}</td>
           <td class="fmt-currency">${fmt(r.total_cobrado_neto)}</td>
           <td><span class="pill pill-purple">${fmtPct(r.porcentaje_aplicado)}</span></td>
           <td class="fmt-currency" style="color:var(--green);font-weight:600">${fmt(r.comision_calculada)}</td>
           <td>${r.cant_facturas}</td>
-          <td style="font-size:12px;color:var(--muted)">${r.fecha_generacion?.slice(0,16).replace('T',' ')||''}</td>
-          <td><button class="btn btn-secondary btn-sm" onclick="verResumen(${r.id})">👁</button></td>
-        </tr>
-      `).join('')}
+          <td>${estadoPago}</td>
+          <td style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn btn-secondary btn-sm" onclick="verResumen(${r.id})" title="Ver detalle">👁</button>
+            ${!pagada
+              ? `<button class="btn btn-green btn-sm" onclick="abrirPagarComision(${r.id},'${r.vendedor_nombre}','${MESES[r.periodo_mes]} ${r.periodo_anio}',${r.comision_calculada})">💰 Pagar</button>`
+              : `<button class="btn btn-secondary btn-sm" onclick="desmarcarPagada(${r.id})" title="Desmarcar">↩</button>`
+            }
+          </td>
+        </tr>`;
+      }).join('')}
       </tbody>
     </table></div>`;
   } catch(e) { toast(e.message,'err'); }
@@ -1248,12 +1281,14 @@ async function confirmarResumen() {
   const mes = parseInt($('res-mes').value);
   const anio = parseInt($('res-anio-sel').value);
   const notas = $('res-notas').value;
+  const fecha_hasta = $('res-fecha-hasta').value || null;
   const vid = $('res-vendedor-sel').value;
   let url = '/resumenes';
   if (vid) url += `?vendedor_id=${vid}`;
   try {
-    const res = await api(url, {method:'POST', body:JSON.stringify({mes,anio,notas})});
-    toast(`${res.length} resumen(es) generados para ${MESES[mes]} ${anio}`);
+    const res = await api(url, {method:'POST', body:JSON.stringify({mes, anio, notas, fecha_hasta})});
+    const corteStr = fecha_hasta ? ` (corte ${fecha_hasta})` : '';
+    toast(`${res.length} resumen(es) generados para ${MESES[mes]} ${anio}${corteStr}`);
     closeModal('modal-resumen');
     loadResumenes();
   } catch(e) { toast(e.message,'err'); }
@@ -1262,9 +1297,19 @@ async function confirmarResumen() {
 async function verResumen(id) {
   try {
     const r = await api(`/resumenes/${id}`);
-    $('det-title').textContent = `${r.vendedor_nombre} — ${MESES[r.periodo_mes]} ${r.periodo_anio}`;
     const det = r.detalle_facturas || [];
+    const periodo = `${MESES[r.periodo_mes]} ${r.periodo_anio}`;
+    const corteStr = r.fecha_corte ? ` · corte ${r.fecha_corte.slice(0,10)}` : '';
+    const pagadaStr = r.comision_pagada
+      ? `<span class="pill pill-green">✓ Comisión pagada el ${r.fecha_pago_comision?.slice(0,10)||''}</span>`
+      : `<span class="pill pill-yellow">⏳ Comisión pendiente de pago</span>`;
+
+    $('det-title').textContent = `${r.vendedor_nombre} — ${periodo}`;
     $('det-content').innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        ${pagadaStr}
+        ${r.fecha_corte ? `<span class="pill" style="background:#00d4ff22;color:var(--cyan)">Corte: ${r.fecha_corte.slice(0,10)}</span>` : ''}
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
         <div>
           <div class="label">Total Cobrado Neto</div>
@@ -1285,7 +1330,7 @@ async function verResumen(id) {
       </div>
       ${r.notas ? `<div style="background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px">${r.notas}</div>` : ''}
       <div class="label" style="margin-bottom:8px">Detalle de facturas</div>
-      <div class="tbl-wrap" style="max-height:300px;overflow-y:auto">
+      <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
       <table>
         <thead><tr><th>Nro</th><th>Fecha Cobro</th><th>Cliente</th><th>Neto</th></tr></thead>
         <tbody>
@@ -1302,8 +1347,124 @@ async function verResumen(id) {
       <div style="font-size:11px;color:var(--muted);margin-top:12px">
         Generado: ${r.fecha_generacion?.slice(0,16).replace('T',' ')||''}
       </div>`;
+
+    // Actualizar botones del modal
+    const footer = document.querySelector('#modal-det-resumen .modal-footer');
+    footer.innerHTML = `
+      <button class="btn btn-secondary" onclick="closeModal('modal-det-resumen')">Cerrar</button>
+      <button class="btn btn-secondary" onclick="copiarWhatsApp(${id})">📱 Copiar para WhatsApp</button>
+      <button class="btn btn-secondary" onclick="imprimirResumen(${id})">🖨 Imprimir</button>
+      ${!r.comision_pagada
+        ? `<button class="btn btn-green" onclick="closeModal('modal-det-resumen');abrirPagarComision(${r.id},'${r.vendedor_nombre}','${periodo}',${r.comision_calculada})">💰 Marcar Pagada</button>`
+        : ''}
+    `;
+    // Guardar datos del resumen para WhatsApp/imprimir
+    window._resumenActual = r;
     openModal('modal-det-resumen');
   } catch(e) { toast(e.message,'err'); }
+}
+
+function copiarWhatsApp(id) {
+  const r = window._resumenActual;
+  if (!r) return;
+  const det = r.detalle_facturas || [];
+  const periodo = `${MESES[r.periodo_mes]} ${r.periodo_anio}`;
+  const corte = r.fecha_corte ? ` (corte ${r.fecha_corte.slice(0,10)})` : '';
+  const lineas = det.map(f =>
+    `• ${f.numero||'—'} | ${f.fecha_cobro?.slice(0,10)||'—'} | ${f.cliente} | ${fmt(f.neto)}`
+  ).join('\n');
+  const texto = `*LIQUIDACIÓN DE COMISIONES — ${periodo.toUpperCase()}${corte}*\n` +
+    `Vendedor/a: ${r.vendedor_nombre}\n\n` +
+    `*Facturas cobradas:*\n${lineas || '(sin facturas)'}\n\n` +
+    `Total cobrado (neto): ${fmt(r.total_cobrado_neto)}\n` +
+    `Tramo de comisión: ${fmtPct(r.porcentaje_aplicado)}\n` +
+    `*Comisión a cobrar: ${fmt(r.comision_calculada)}*\n` +
+    (r.notas ? `\nNotas: ${r.notas}\n` : '') +
+    `\nGenerado: ${new Date().toLocaleDateString('es-AR')}`;
+  navigator.clipboard.writeText(texto).then(() => {
+    toast('✓ Texto copiado — podés pegarlo en WhatsApp');
+  }).catch(() => {
+    prompt('Copiá este texto:', texto);
+  });
+}
+
+function imprimirResumen(id) {
+  const r = window._resumenActual;
+  if (!r) return;
+  const det = r.detalle_facturas || [];
+  const periodo = `${MESES[r.periodo_mes]} ${r.periodo_anio}`;
+  const corte = r.fecha_corte ? ` — Corte: ${r.fecha_corte.slice(0,10)}` : '';
+  const filas = det.map(f => `
+    <tr>
+      <td>${f.numero||'—'}</td>
+      <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
+      <td>${f.cliente}</td>
+      <td style="text-align:right">${fmt(f.neto)}</td>
+    </tr>`).join('');
+  const w = window.open('', '_blank');
+  w.document.write(`<!DOCTYPE html><html lang="es"><head>
+    <meta charset="UTF-8"/><title>Comisión ${r.vendedor_nombre} ${periodo}</title>
+    <style>
+      body{font-family:'Segoe UI',sans-serif;font-size:13px;color:#111;padding:32px;max-width:700px;margin:0 auto}
+      h1{font-size:18px;margin-bottom:4px}
+      .sub{color:#666;font-size:13px;margin-bottom:24px}
+      table{width:100%;border-collapse:collapse;margin:16px 0}
+      th{background:#f0f0f0;padding:8px 10px;text-align:left;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+      td{padding:8px 10px;border-bottom:1px solid #e0e0e0;font-size:13px}
+      .totales{margin-top:20px;border-top:2px solid #111;padding-top:16px}
+      .tot-row{display:flex;justify-content:space-between;padding:4px 0;font-size:14px}
+      .tot-final{font-size:18px;font-weight:700;color:#111;border-top:1px solid #ccc;margin-top:8px;padding-top:8px}
+      .footer{margin-top:32px;font-size:11px;color:#999}
+    </style>
+  </head><body>
+    <h1>Liquidación de Comisiones</h1>
+    <div class="sub">Vendedor/a: <strong>${r.vendedor_nombre}</strong> &nbsp;·&nbsp; Período: <strong>${periodo}</strong>${corte}</div>
+    <table>
+      <thead><tr><th>Nro Factura</th><th>Fecha Cobro</th><th>Cliente</th><th style="text-align:right">Neto</th></tr></thead>
+      <tbody>${filas || '<tr><td colspan="4" style="text-align:center;color:#999">Sin facturas en este período</td></tr>'}</tbody>
+    </table>
+    <div class="totales">
+      <div class="tot-row"><span>Total cobrado (neto sin IVA):</span><span>${fmt(r.total_cobrado_neto)}</span></div>
+      <div class="tot-row"><span>Tramo de comisión aplicado:</span><span>${fmtPct(r.porcentaje_aplicado)}</span></div>
+      <div class="tot-row tot-final"><span>Comisión a cobrar:</span><span>${fmt(r.comision_calculada)}</span></div>
+    </div>
+    ${r.notas ? `<div style="margin-top:16px;padding:10px;background:#f9f9f9;border-left:3px solid #ccc;font-size:12px">${r.notas}</div>` : ''}
+    <div class="footer">Generado el ${new Date().toLocaleDateString('es-AR')} · Sistema de Comisiones PF</div>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
+}
+
+// ── Pagar comisión ────────────────────────────────────────────────────────────
+function abrirPagarComision(rid, vendedor, periodo, comision) {
+  $('pagar-resumen-id').value = rid;
+  $('pagar-desc').textContent = `${vendedor} · ${periodo} · Comisión: ${fmt(comision)}`;
+  $('pagar-fecha').value = new Date().toISOString().slice(0, 10);
+  openModal('modal-pagar-comision');
+}
+
+async function confirmarPagarComision() {
+  const rid = $('pagar-resumen-id').value;
+  const fecha = $('pagar-fecha').value;
+  if (!fecha) { toast('Elegí la fecha de pago', 'err'); return; }
+  try {
+    await api(`/resumenes/${rid}/marcar-pagada`, {
+      method: 'POST',
+      body: JSON.stringify({ fecha_pago: fecha })
+    });
+    toast('✓ Comisión registrada como pagada');
+    closeModal('modal-pagar-comision');
+    loadResumenes();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function desmarcarPagada(rid) {
+  try {
+    await api(`/resumenes/${rid}/desmarcar-pagada`, { method: 'POST' });
+    toast('Comisión desmarcada como pagada');
+    loadResumenes();
+  } catch(e) { toast(e.message, 'err'); }
 }
 
 // ── Estadísticas ──────────────────────────────────────────────────────────────

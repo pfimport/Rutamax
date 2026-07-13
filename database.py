@@ -103,6 +103,16 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_facturas_xubio_id
                 ON facturas (xubio_id);
         """)
+        # Migraciones para bases de datos existentes
+        for sql in [
+            "ALTER TABLE resumenes ADD COLUMN comision_pagada INTEGER DEFAULT 0",
+            "ALTER TABLE resumenes ADD COLUMN fecha_pago_comision TEXT",
+            "ALTER TABLE resumenes ADD COLUMN fecha_corte TEXT",
+        ]:
+            try:
+                conn.execute(sql)
+            except Exception:
+                pass
 
 
 def calcular_comision(total_neto: float, escala: list) -> tuple:

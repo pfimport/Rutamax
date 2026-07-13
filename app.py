@@ -118,6 +118,11 @@ class ReumenRequest(BaseModel):
     mes: int
     anio: int
     notas: Optional[str] = None
+    fecha_hasta: Optional[str] = None  # YYYY-MM-DD corte opcional
+
+
+class MarcarPagadaRequest(BaseModel):
+    fecha_pago: str  # YYYY-MM-DD
 
 
 # ── Vendedores ────────────────────────────────────────────────────────────────
@@ -559,14 +564,24 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
         results = []
         for v in vends:
             escala = json.loads(v["escala_comision"])
-            facturas = conn.execute(
-                """SELECT * FROM facturas
-                   WHERE vendedor_id = ?
-                     AND periodo_cobro_mes = ?
-                     AND periodo_cobro_anio = ?
-                     AND estado IN ('cobrada', 'pagada', 'cancelada')""",
-                (v["id"], body.mes, body.anio),
-            ).fetchall()
+            if body.fecha_hasta:
+                fecha_desde = f"{body.anio}-{body.mes:02d}-01"
+                facturas = conn.execute(
+                    """SELECT * FROM facturas
+                       WHERE vendedor_id = ?
+                         AND fecha_cobro >= ? AND fecha_cobro <= ?
+                         AND estado IN ('cobrada', 'pagada', 'cancelada')""",
+                    (v["id"], fecha_desde, body.fecha_hasta),
+                ).fetchall()
+            else:
+                facturas = conn.execute(
+                    """SELECT * FROM facturas
+                       WHERE vendedor_id = ?
+                         AND periodo_cobro_mes = ?
+                         AND periodo_cobro_anio = ?
+                         AND estado IN ('cobrada', 'pagada', 'cancelada')""",
+                    (v["id"], body.mes, body.anio),
+                ).fetchall()
 
             total_neto = sum(f["neto"] for f in facturas)
             cant = len(facturas)
@@ -585,11 +600,11 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
                 """INSERT OR REPLACE INTO resumenes
                    (vendedor_id, periodo_mes, periodo_anio, total_cobrado_neto,
                     comision_calculada, porcentaje_aplicado, escala_aplicada,
-                    cant_facturas, detalle_facturas, notas, fecha_generacion)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    cant_facturas, detalle_facturas, notas, fecha_corte, fecha_generacion)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (v["id"], body.mes, body.anio, total_neto, comision, pct,
                  json.dumps(escala), cant, json.dumps(detalle),
-                 body.notas, datetime.now().isoformat()),
+                 body.notas, body.fecha_hasta, datetime.now().isoformat()),
             )
             results.append({
                 "vendedor_id": v["id"],
@@ -601,6 +616,29 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
                 "cant_facturas": cant,
             })
     return results
+
+
+@app.post("/api/resumenes/{rid}/marcar-pagada")
+def marcar_comision_pagada(rid: int, body: MarcarPagadaRequest):
+    with get_conn() as conn:
+        row = conn.execute("SELECT id FROM resumenes WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Resumen no encontrado")
+        conn.execute(
+            "UPDATE resumenes SET comision_pagada = 1, fecha_pago_comision = ? WHERE id = ?",
+            (body.fecha_pago, rid),
+        )
+    return {"ok": True}
+
+
+@app.post("/api/resumenes/{rid}/desmarcar-pagada")
+def desmarcar_comision_pagada(rid: int):
+    with get_conn() as conn:
+        conn.execute(
+            "UPDATE resumenes SET comision_pagada = 0, fecha_pago_comision = NULL WHERE id = ?",
+            (rid,),
+        )
+    return {"ok": True}
 
 
 @app.get("/api/resumenes/{rid}")
