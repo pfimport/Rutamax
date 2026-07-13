@@ -230,11 +230,11 @@ def asignar_vendedor_a_cliente(cliente_xubio_id: str, body: AsignarVendedor):
                WHERE cliente_id_xubio = ?""",
             (body.vendedor_id, datetime.now().isoformat(), cliente_xubio_id),
         )
-        # Propagate to unassigned invoices of this client
+        # Propagate to ALL invoices of this client (including already-assigned ones)
         if body.vendedor_id:
             conn.execute(
                 """UPDATE facturas SET vendedor_id = ?
-                   WHERE cliente_id_xubio = ? AND vendedor_id IS NULL""",
+                   WHERE cliente_id_xubio = ?""",
                 (body.vendedor_id, cliente_xubio_id),
             )
     return {"ok": True}
