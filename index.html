@@ -481,9 +481,23 @@ input[type=checkbox]{width:auto;cursor:pointer}
         <option value="">— Sin vendedor —</option>
       </select>
     </div>
-    <p style="font-size:11px;color:var(--muted);margin-top:10px">
-      Al asignar, todas las facturas futuras y pasadas sin vendedor de este cliente quedarán asignadas a este vendedor.
-    </p>
+    <div style="margin-top:16px;background:var(--surface2);border-radius:8px;padding:12px 14px">
+      <div style="font-size:12px;color:var(--muted);font-weight:500;margin-bottom:10px">¿Qué facturas reasignar?</div>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer;margin-bottom:8px">
+        <input type="radio" name="asignar-scope" value="todas" checked style="width:auto;margin-top:2px"/>
+        <div>
+          <div style="font-size:13px;font-weight:600">Todas (anteriores y posteriores)</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Reasigna todas las facturas existentes de este cliente y las futuras</div>
+        </div>
+      </label>
+      <label style="display:flex;align-items:flex-start;gap:10px;cursor:pointer">
+        <input type="radio" name="asignar-scope" value="adelante" style="width:auto;margin-top:2px"/>
+        <div>
+          <div style="font-size:13px;font-weight:600">Solo desde ahora en adelante</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">Las facturas anteriores quedan como están, solo las nuevas van a este vendedor</div>
+        </div>
+      </label>
+    </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-asignar')">Cancelar</button>
       <button class="btn btn-primary" onclick="confirmarAsignar()">Asignar</button>
@@ -1046,12 +1060,16 @@ async function confirmarAsignar() {
   const clienteId = $('asignar-cliente-id').value;
   const vendedorId = $('asignar-vendedor-sel').value || null;
   const facturaId = $('asignar-vendedor-sel').dataset.facturaId;
+  const scope = document.querySelector('input[name="asignar-scope"]:checked')?.value || 'todas';
   try {
     if (clienteId) {
       await api(`/clientes/${encodeURIComponent(clienteId)}/asignar`, {
-        method:'POST', body:JSON.stringify({vendedor_id: vendedorId ? parseInt(vendedorId) : null})
+        method:'POST', body:JSON.stringify({vendedor_id: vendedorId ? parseInt(vendedorId) : null, scope})
       });
-      toast('Vendedor asignado al cliente y sus facturas');
+      const msg = scope === 'todas'
+        ? 'Vendedor asignado — todas las facturas del cliente actualizadas'
+        : 'Vendedor asignado — solo las facturas nuevas irán a este vendedor';
+      toast(msg);
     } else if (facturaId) {
       await api(`/facturas/${facturaId}/asignar-vendedor`, {
         method:'POST', body:JSON.stringify({vendedor_id: vendedorId ? parseInt(vendedorId) : null})
