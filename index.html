@@ -1718,8 +1718,16 @@ async function sincronizar() {
   $('sync-icon').innerHTML = '<span class="spin"></span>';
   $('sync-status').textContent = 'Sincronizando...';
   try {
-    await api('/sincronizar', {method:'POST'});
-    // Sync runs in background — poll until done
+    const resp = await fetch('/api/sincronizar', {method:'POST', headers:{'Content-Type':'application/json'}});
+    if (resp.status === 409) {
+      // Ya hay un sync en curso (ej: el automático del inicio) — esperar que termine
+      await pollSyncEstado();
+      return;
+    }
+    if (!resp.ok) {
+      const e = await resp.json().catch(()=>({detail:resp.statusText}));
+      throw new Error(e.detail || resp.statusText);
+    }
     await pollSyncEstado();
   } catch(e) {
     toast(e.message, 'err');
