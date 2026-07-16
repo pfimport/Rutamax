@@ -1,4 +1,5 @@
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
 
 REM ── Modo: "silencioso" = sin pausa al final (llamado desde INICIAR.bat)
@@ -64,8 +65,8 @@ if defined OneDrive (
 )
 
 if defined CLOUD_DEST (
-    if not exist "%CLOUD_DEST%" mkdir "%CLOUD_DEST%"
-    copy /Y "comisiones.db" "%CLOUD_DEST%\%NOMBRE%" >nul
+    if not exist "%CLOUD_DEST%" mkdir "%CLOUD_DEST%" >nul 2>&1
+    copy /Y "comisiones.db" "%CLOUD_DEST%\%NOMBRE%" >nul 2>&1
 )
 
 REM ── Limpiar backups locales: conservar solo los ultimos 30
