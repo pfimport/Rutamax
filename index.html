@@ -686,6 +686,28 @@ const $ = id => document.getElementById(id);
 const fmt = n => '$ ' + (n||0).toLocaleString('es-AR',{minimumFractionDigits:0,maximumFractionDigits:0});
 const fmtPct = p => (p||0).toFixed(1) + '%';
 
+// Desglose progresivo: qué parte del total cae en cada tramo de la escala
+function desgloseTramos(total, escala) {
+  if (!escala || !escala.length || total <= 0) return [];
+  const sorted = [...escala].sort((a,b) => a.desde - b.desde);
+  const filas = [];
+  for (const t of sorted) {
+    if (total <= t.desde) break;
+    const tope = (t.hasta != null) ? Math.min(total, t.hasta) : total;
+    const base = tope - t.desde;
+    if (base <= 0) continue;
+    filas.push({ pct: t.porcentaje, base, comision: base * t.porcentaje / 100 });
+    if (t.hasta == null || total <= t.hasta) break;
+  }
+  return filas;
+}
+
+// Texto corto de tramos aplicados, ej: "5% + 7%"
+function tramosResumen(total, escala) {
+  const f = desgloseTramos(total, escala);
+  return f.length ? f.map(x => x.pct + '%').join(' + ') : '—';
+}
+
 async function api(path, opts={}) {
   const r = await fetch('/api' + path, {
     headers: {'Content-Type':'application/json'},
@@ -751,6 +773,7 @@ async function loadDashboard() {
   const anio = $('dash-anio').value;
   try {
     const d = await api(`/dashboard?mes=${mes}&anio=${anio}`);
+    if (!vendedoresList.length) vendedoresList = await api('/vendedores');
     const cont = $('dash-cards');
     cont.innerHTML = '';
 
@@ -765,6 +788,8 @@ async function loadDashboard() {
 
     d.vendedores.forEach(v => {
       const pct = v.porcentaje_aplicado;
+      const escalaV = (vendedoresList.find(x => x.id === v.vendedor_id) || {}).escala_comision;
+      const tramosTxt = tramosResumen(v.total_cobrado_neto, escalaV);
       const nextStr = v.proximo_tramo
         ? `Faltan ${fmt(v.proximo_tramo.desde - v.total_cobrado_neto)} para el ${v.proximo_tramo.porcentaje}%`
         : `✔ En el tramo máximo (${pct}%)`;
@@ -789,8 +814,8 @@ async function loadDashboard() {
             <span style="font-size:18px;font-weight:700;color:var(--green)">${fmt(v.comision_calculada)}</span>
           </div>
           <div>
-            <div class="label">Tramo</div>
-            <span class="pill pill-purple">${fmtPct(pct)}</span>
+            <div class="label">Tramos</div>
+            <span class="pill pill-purple">${tramosTxt}</span>
           </div>
           <div>
             <div class="label">Facturas</div>
@@ -1322,8 +1347,8 @@ async function verResumen(id) {
           <div style="font-size:22px;font-weight:700">${fmt(r.total_cobrado_neto)}</div>
         </div>
         <div>
-          <div class="label">Tramo aplicado</div>
-          <div style="font-size:22px;font-weight:700;color:var(--purple)">${fmtPct(r.porcentaje_aplicado)}</div>
+          <div class="label">Tramos aplicados</div>
+          <div style="font-size:22px;font-weight:700;color:var(--purple)">${tramosResumen(r.total_cobrado_neto, r.escala_aplicada)}</div>
         </div>
         <div>
           <div class="label">${(r.adelantos_pagados||0)>0 && !r.fecha_corte ? 'Comisión total del mes' : 'Comisión a pagar'}</div>
@@ -1334,6 +1359,31 @@ async function verResumen(id) {
           <div style="font-size:22px;font-weight:700">${r.cant_facturas}</div>
         </div>
       </div>
+      ${(() => {
+        const tramos = desgloseTramos(r.total_cobrado_neto, r.escala_aplicada);
+        if (tramos.length <= 1) return '';
+        return `
+        <div class="label" style="margin-bottom:8px">Cómo se calcula la comisión</div>
+        <div class="tbl-wrap" style="margin-bottom:20px">
+        <table>
+          <thead><tr><th>Tramo</th><th>Monto en el tramo</th><th>%</th><th>Comisión</th></tr></thead>
+          <tbody>
+          ${tramos.map(t=>`
+            <tr>
+              <td><span class="pill pill-purple">${t.pct}%</span></td>
+              <td class="fmt-currency">${fmt(t.base)}</td>
+              <td>${t.pct}%</td>
+              <td class="fmt-currency" style="color:var(--green)">${fmt(t.comision)}</td>
+            </tr>`).join('')}
+            <tr style="font-weight:700;border-top:2px solid var(--border)">
+              <td>Total</td>
+              <td class="fmt-currency">${fmt(r.total_cobrado_neto)}</td>
+              <td></td>
+              <td class="fmt-currency" style="color:var(--green)">${fmt(r.comision_calculada)}</td>
+            </tr>
+          </tbody>
+        </table></div>`;
+      })()}
       ${(r.adelantos_pagados||0)>0 && !r.fecha_corte ? `
       <div style="background:var(--surface2);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px">
         <div style="display:flex;justify-content:space-between;font-size:13px">
@@ -1401,11 +1451,16 @@ function copiarWhatsApp(id) {
       `Adelantos ya pagados: − ${fmt(r.adelantos_pagados)}\n` +
       `*Comisión a cobrar: ${fmt(comisionFinal)}*`
     : `*Comisión a cobrar: ${fmt(r.comision_calculada)}*`;
+  const tramos = desgloseTramos(r.total_cobrado_neto, r.escala_aplicada);
+  const bloqueTramos = tramos.length > 1
+    ? `*Cálculo por tramos:*\n` +
+      tramos.map(t => `• ${fmt(t.base)} al ${t.pct}% = ${fmt(t.comision)}`).join('\n') + '\n\n'
+    : '';
   const texto = `*LIQUIDACIÓN DE COMISIONES — ${periodo.toUpperCase()}${corte}*\n` +
     `Vendedor/a: ${r.vendedor_nombre}\n\n` +
     `*Facturas cobradas:*\n${lineas || '(sin facturas)'}\n\n` +
-    `Total cobrado (neto): ${fmt(r.total_cobrado_neto)}\n` +
-    `Tramo de comisión: ${fmtPct(r.porcentaje_aplicado)}\n` +
+    `Total cobrado (neto): ${fmt(r.total_cobrado_neto)}\n\n` +
+    bloqueTramos +
     lineaComision + '\n' +
     (r.notas ? `\nNotas: ${r.notas}\n` : '') +
     `\nGenerado: ${new Date().toLocaleDateString('es-AR')}`;
@@ -1429,6 +1484,19 @@ function imprimirResumen(id) {
       <td>${f.cliente}</td>
       <td style="text-align:right">${fmt(f.neto)}</td>
     </tr>`).join('');
+  const tramos = desgloseTramos(r.total_cobrado_neto, r.escala_aplicada);
+  const tablaTramos = tramos.length > 1 ? `
+    <div style="font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:#666;margin-top:16px">Cómo se calcula la comisión</div>
+    <table>
+      <thead><tr><th>Monto en el tramo</th><th>%</th><th style="text-align:right">Comisión</th></tr></thead>
+      <tbody>
+      ${tramos.map(t=>`<tr>
+        <td>${fmt(t.base)}</td>
+        <td>${t.pct}%</td>
+        <td style="text-align:right">${fmt(t.comision)}</td>
+      </tr>`).join('')}
+      </tbody>
+    </table>` : '';
   const w = window.open('', '_blank');
   w.document.write(`<!DOCTYPE html><html lang="es"><head>
     <meta charset="UTF-8"/><title>Comisión ${r.vendedor_nombre} ${periodo}</title>
@@ -1451,9 +1519,10 @@ function imprimirResumen(id) {
       <thead><tr><th>Nro Factura</th><th>Fecha Cobro</th><th>Cliente</th><th style="text-align:right">Neto</th></tr></thead>
       <tbody>${filas || '<tr><td colspan="4" style="text-align:center;color:#999">Sin facturas en este período</td></tr>'}</tbody>
     </table>
+    ${tablaTramos}
     <div class="totales">
       <div class="tot-row"><span>Total cobrado (neto sin IVA):</span><span>${fmt(r.total_cobrado_neto)}</span></div>
-      <div class="tot-row"><span>Tramo de comisión aplicado:</span><span>${fmtPct(r.porcentaje_aplicado)}</span></div>
+      <div class="tot-row"><span>Tramos aplicados:</span><span>${tramosResumen(r.total_cobrado_neto, r.escala_aplicada)}</span></div>
       ${(r.adelantos_pagados||0)>0&&!r.fecha_corte ? `
       <div class="tot-row"><span>Comisión total del mes:</span><span>${fmt(r.comision_calculada)}</span></div>
       <div class="tot-row" style="color:#388e3c"><span>Adelantos ya pagados:</span><span>− ${fmt(r.adelantos_pagados)}</span></div>
