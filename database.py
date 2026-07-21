@@ -132,12 +132,22 @@ def init_db():
 
 
 def calcular_comision(total_neto: float, escala: list) -> tuple:
-    """Flat-rate tiered: applies the % of the tier where total_neto falls."""
-    for tramo in sorted(escala, key=lambda x: x["desde"], reverse=True):
-        if total_neto >= tramo["desde"]:
-            pct = tramo["porcentaje"]
-            return round(total_neto * pct / 100, 2), pct
-    return 0.0, 0.0
+    """Progresivo: cada tramo aplica su % solo sobre la porción dentro de ese tramo."""
+    escala_sorted = sorted(escala, key=lambda x: x["desde"])
+    comision = 0.0
+    ultimo_pct = 0.0
+    for tramo in escala_sorted:
+        desde = tramo["desde"]
+        hasta = tramo["hasta"]
+        pct = tramo["porcentaje"]
+        if total_neto <= desde:
+            break
+        tope = min(total_neto, hasta) if hasta is not None else total_neto
+        comision += (tope - desde) * pct / 100
+        ultimo_pct = pct
+        if hasta is None or total_neto <= hasta:
+            break
+    return round(comision, 2), ultimo_pct
 
 
 def get_config(key: str, default=None):
