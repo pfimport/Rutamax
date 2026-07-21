@@ -1243,23 +1243,29 @@ async function loadResumenes() {
       <tbody>
       ${data.map(r => {
         const pagada = r.comision_pagada;
+        const hayAdelantos = (r.adelantos_pagados||0) > 0 && !r.fecha_corte;
+        const comisionAPagar = hayAdelantos ? r.comision_pendiente : r.comision_calculada;
         const estadoPago = pagada
           ? `<span class="pill pill-green">✓ Pagada ${r.fecha_pago_comision?.slice(0,10)||''}</span>`
           : `<span class="pill pill-yellow">Pendiente</span>`;
         const corte = r.fecha_corte ? ` <span style="font-size:11px;color:var(--muted)">corte ${r.fecha_corte.slice(0,10)}</span>` : '';
+        const comisionCell = hayAdelantos
+          ? `<div style="color:var(--green);font-weight:600">${fmt(comisionAPagar)}</div>
+             <div style="font-size:11px;color:var(--muted)">total ${fmt(r.comision_calculada)} − adel. ${fmt(r.adelantos_pagados)}</div>`
+          : `<span class="fmt-currency" style="color:var(--green);font-weight:600">${fmt(r.comision_calculada)}</span>`;
         return `
         <tr>
           <td style="font-weight:600">${r.vendedor_nombre}</td>
           <td>${MESES[r.periodo_mes]} ${r.periodo_anio}${corte}</td>
           <td class="fmt-currency">${fmt(r.total_cobrado_neto)}</td>
           <td><span class="pill pill-purple">${fmtPct(r.porcentaje_aplicado)}</span></td>
-          <td class="fmt-currency" style="color:var(--green);font-weight:600">${fmt(r.comision_calculada)}</td>
+          <td>${comisionCell}</td>
           <td>${r.cant_facturas}</td>
           <td>${estadoPago}</td>
           <td style="display:flex;gap:4px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" onclick="verResumen(${r.id})" title="Ver detalle">👁</button>
             ${!pagada
-              ? `<button class="btn btn-green btn-sm" onclick="abrirPagarComision(${r.id},'${r.vendedor_nombre}','${MESES[r.periodo_mes]} ${r.periodo_anio}',${r.comision_calculada})">💰 Pagar</button>`
+              ? `<button class="btn btn-green btn-sm" onclick="abrirPagarComision(${r.id},'${r.vendedor_nombre}','${MESES[r.periodo_mes]} ${r.periodo_anio}',${comisionAPagar},${hayAdelantos})">💰 Pagar</button>`
               : `<button class="btn btn-secondary btn-sm" onclick="desmarcarPagada(${r.id})" title="Desmarcar">↩</button>`
             }
           </td>
@@ -1320,7 +1326,7 @@ async function verResumen(id) {
           <div style="font-size:22px;font-weight:700;color:var(--purple)">${fmtPct(r.porcentaje_aplicado)}</div>
         </div>
         <div>
-          <div class="label">Comisión a pagar</div>
+          <div class="label">${(r.adelantos_pagados||0)>0 && !r.fecha_corte ? 'Comisión total del mes' : 'Comisión a pagar'}</div>
           <div style="font-size:22px;font-weight:700;color:var(--green)">${fmt(r.comision_calculada)}</div>
         </div>
         <div>
@@ -1328,6 +1334,21 @@ async function verResumen(id) {
           <div style="font-size:22px;font-weight:700">${r.cant_facturas}</div>
         </div>
       </div>
+      ${(r.adelantos_pagados||0)>0 && !r.fecha_corte ? `
+      <div style="background:var(--surface2);border-radius:8px;padding:14px 16px;margin-bottom:16px;display:flex;flex-direction:column;gap:6px">
+        <div style="display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--muted)">Comisión total del mes</span>
+          <span>${fmt(r.comision_calculada)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:13px">
+          <span style="color:var(--muted)">Adelantos ya pagados</span>
+          <span style="color:var(--green)">− ${fmt(r.adelantos_pagados)}</span>
+        </div>
+        <div style="display:flex;justify-content:space-between;font-size:16px;font-weight:700;border-top:1px solid var(--border);padding-top:8px;margin-top:4px">
+          <span>A pagar ahora</span>
+          <span style="color:var(--green)">${fmt(r.comision_pendiente)}</span>
+        </div>
+      </div>` : ''}
       ${r.notas ? `<div style="background:var(--surface2);border-radius:8px;padding:10px 14px;margin-bottom:16px;font-size:13px">${r.notas}</div>` : ''}
       <div class="label" style="margin-bottom:8px">Detalle de facturas</div>
       <div class="tbl-wrap" style="max-height:280px;overflow-y:auto">
@@ -1355,7 +1376,7 @@ async function verResumen(id) {
       <button class="btn btn-secondary" onclick="copiarWhatsApp(${id})">📱 Copiar para WhatsApp</button>
       <button class="btn btn-secondary" onclick="imprimirResumen(${id})">🖨 Imprimir</button>
       ${!r.comision_pagada
-        ? `<button class="btn btn-green" onclick="closeModal('modal-det-resumen');abrirPagarComision(${r.id},'${r.vendedor_nombre}','${periodo}',${r.comision_calculada})">💰 Marcar Pagada</button>`
+        ? `<button class="btn btn-green" onclick="closeModal('modal-det-resumen');abrirPagarComision(${r.id},'${r.vendedor_nombre}','${periodo}',${(r.adelantos_pagados||0)>0&&!r.fecha_corte?r.comision_pendiente:r.comision_calculada},${(r.adelantos_pagados||0)>0&&!r.fecha_corte})">💰 Marcar Pagada</button>`
         : ''}
     `;
     // Guardar datos del resumen para WhatsApp/imprimir
@@ -1373,12 +1394,19 @@ function copiarWhatsApp(id) {
   const lineas = det.map(f =>
     `• ${f.numero||'—'} | ${f.fecha_cobro?.slice(0,10)||'—'} | ${f.cliente} | ${fmt(f.neto)}`
   ).join('\n');
+  const hayAdelantos = (r.adelantos_pagados||0) > 0 && !r.fecha_corte;
+  const comisionFinal = hayAdelantos ? r.comision_pendiente : r.comision_calculada;
+  const lineaComision = hayAdelantos
+    ? `Comisión total del mes: ${fmt(r.comision_calculada)}\n` +
+      `Adelantos ya pagados: − ${fmt(r.adelantos_pagados)}\n` +
+      `*Comisión a cobrar: ${fmt(comisionFinal)}*`
+    : `*Comisión a cobrar: ${fmt(r.comision_calculada)}*`;
   const texto = `*LIQUIDACIÓN DE COMISIONES — ${periodo.toUpperCase()}${corte}*\n` +
     `Vendedor/a: ${r.vendedor_nombre}\n\n` +
     `*Facturas cobradas:*\n${lineas || '(sin facturas)'}\n\n` +
     `Total cobrado (neto): ${fmt(r.total_cobrado_neto)}\n` +
     `Tramo de comisión: ${fmtPct(r.porcentaje_aplicado)}\n` +
-    `*Comisión a cobrar: ${fmt(r.comision_calculada)}*\n` +
+    lineaComision + '\n' +
     (r.notas ? `\nNotas: ${r.notas}\n` : '') +
     `\nGenerado: ${new Date().toLocaleDateString('es-AR')}`;
   navigator.clipboard.writeText(texto).then(() => {
@@ -1426,7 +1454,13 @@ function imprimirResumen(id) {
     <div class="totales">
       <div class="tot-row"><span>Total cobrado (neto sin IVA):</span><span>${fmt(r.total_cobrado_neto)}</span></div>
       <div class="tot-row"><span>Tramo de comisión aplicado:</span><span>${fmtPct(r.porcentaje_aplicado)}</span></div>
+      ${(r.adelantos_pagados||0)>0&&!r.fecha_corte ? `
+      <div class="tot-row"><span>Comisión total del mes:</span><span>${fmt(r.comision_calculada)}</span></div>
+      <div class="tot-row" style="color:#388e3c"><span>Adelantos ya pagados:</span><span>− ${fmt(r.adelantos_pagados)}</span></div>
+      <div class="tot-row tot-final"><span>A pagar:</span><span>${fmt(r.comision_pendiente)}</span></div>
+      ` : `
       <div class="tot-row tot-final"><span>Comisión a cobrar:</span><span>${fmt(r.comision_calculada)}</span></div>
+      `}
     </div>
     ${r.notas ? `<div style="margin-top:16px;padding:10px;background:#f9f9f9;border-left:3px solid #ccc;font-size:12px">${r.notas}</div>` : ''}
     <div class="footer">Generado el ${new Date().toLocaleDateString('es-AR')} · Sistema de Comisiones PF</div>
@@ -1437,9 +1471,10 @@ function imprimirResumen(id) {
 }
 
 // ── Pagar comisión ────────────────────────────────────────────────────────────
-function abrirPagarComision(rid, vendedor, periodo, comision) {
+function abrirPagarComision(rid, vendedor, periodo, comision, esResto=false) {
   $('pagar-resumen-id').value = rid;
-  $('pagar-desc').textContent = `${vendedor} · ${periodo} · Comisión: ${fmt(comision)}`;
+  const label = esResto ? 'Resto a pagar' : 'Comisión';
+  $('pagar-desc').textContent = `${vendedor} · ${periodo} · ${label}: ${fmt(comision)}`;
   $('pagar-fecha').value = new Date().toISOString().slice(0, 10);
   openModal('modal-pagar-comision');
 }

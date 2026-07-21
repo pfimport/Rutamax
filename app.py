@@ -524,6 +524,14 @@ def asignar_pendiente(body: AsignarPendiente):
 
 # ── Resúmenes ─────────────────────────────────────────────────────────────────
 
+def _add_pendiente(d: dict) -> dict:
+    """Agrega comision_pendiente = comision_calculada − adelantos ya pagados."""
+    d["comision_pendiente"] = round(
+        (d.get("comision_calculada") or 0) - (d.get("adelantos_pagados") or 0), 2
+    )
+    return d
+
+
 @app.get("/api/resumenes")
 def listar_resumenes(vendedor_id: Optional[int] = None):
     with get_conn() as conn:
@@ -544,7 +552,7 @@ def listar_resumenes(vendedor_id: Optional[int] = None):
             d["escala_aplicada"] = json.loads(d["escala_aplicada"])
         if d.get("detalle_facturas"):
             d["detalle_facturas"] = json.loads(d["detalle_facturas"])
-        result.append(d)
+        result.append(_add_pendiente(d))
     return result
 
 
@@ -596,16 +604,30 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
                 for f in facturas
             ]
 
+            # Si es resumen final (sin corte), sumar adelantos ya pagados este mes
+            adelantos_pagados = 0.0
+            if not body.fecha_hasta:
+                row_adel = conn.execute(
+                    """SELECT COALESCE(SUM(comision_pagada), 0) as total
+                       FROM adelantos_comision
+                       WHERE vendedor_id = ? AND periodo_mes = ? AND periodo_anio = ?""",
+                    (v["id"], body.mes, body.anio),
+                ).fetchone()
+                adelantos_pagados = row_adel["total"] or 0.0
+
             conn.execute(
                 """INSERT OR REPLACE INTO resumenes
                    (vendedor_id, periodo_mes, periodo_anio, total_cobrado_neto,
                     comision_calculada, porcentaje_aplicado, escala_aplicada,
-                    cant_facturas, detalle_facturas, notas, fecha_corte, fecha_generacion)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    cant_facturas, detalle_facturas, notas, fecha_corte,
+                    adelantos_pagados, fecha_generacion)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (v["id"], body.mes, body.anio, total_neto, comision, pct,
                  json.dumps(escala), cant, json.dumps(detalle),
-                 body.notas, body.fecha_hasta, datetime.now().isoformat()),
+                 body.notas, body.fecha_hasta, adelantos_pagados,
+                 datetime.now().isoformat()),
             )
+            comision_pendiente = round(comision - adelantos_pagados, 2)
             results.append({
                 "vendedor_id": v["id"],
                 "vendedor_nombre": v["nombre"],
@@ -614,6 +636,8 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
                 "porcentaje_aplicado": pct,
                 "comision_calculada": comision,
                 "cant_facturas": cant,
+                "adelantos_pagados": adelantos_pagados,
+                "comision_pendiente": comision_pendiente,
             })
     return results
 
@@ -621,23 +645,46 @@ def generar_resumen(body: ReumenRequest, vendedor_id: Optional[int] = None):
 @app.post("/api/resumenes/{rid}/marcar-pagada")
 def marcar_comision_pagada(rid: int, body: MarcarPagadaRequest):
     with get_conn() as conn:
-        row = conn.execute("SELECT id FROM resumenes WHERE id = ?", (rid,)).fetchone()
+        row = conn.execute("SELECT * FROM resumenes WHERE id = ?", (rid,)).fetchone()
         if not row:
             raise HTTPException(404, "Resumen no encontrado")
         conn.execute(
             "UPDATE resumenes SET comision_pagada = 1, fecha_pago_comision = ? WHERE id = ?",
             (body.fecha_pago, rid),
         )
+        # Si es un adelanto (tiene fecha_corte), registrarlo para descontarlo del resumen final
+        if row["fecha_corte"]:
+            conn.execute(
+                """INSERT OR REPLACE INTO adelantos_comision
+                   (vendedor_id, periodo_mes, periodo_anio, fecha_corte,
+                    total_neto, comision_pagada, porcentaje_aplicado,
+                    fecha_pago, notas, fecha_generacion)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (row["vendedor_id"], row["periodo_mes"], row["periodo_anio"],
+                 row["fecha_corte"], row["total_cobrado_neto"], row["comision_calculada"],
+                 row["porcentaje_aplicado"], body.fecha_pago, row["notas"],
+                 datetime.now().isoformat()),
+            )
     return {"ok": True}
 
 
 @app.post("/api/resumenes/{rid}/desmarcar-pagada")
 def desmarcar_comision_pagada(rid: int):
     with get_conn() as conn:
+        row = conn.execute("SELECT * FROM resumenes WHERE id = ?", (rid,)).fetchone()
+        if not row:
+            raise HTTPException(404, "Resumen no encontrado")
         conn.execute(
             "UPDATE resumenes SET comision_pagada = 0, fecha_pago_comision = NULL WHERE id = ?",
             (rid,),
         )
+        # Si era un adelanto, eliminar el registro para que no descuente del resumen final
+        if row["fecha_corte"]:
+            conn.execute(
+                """DELETE FROM adelantos_comision
+                   WHERE vendedor_id = ? AND periodo_mes = ? AND periodo_anio = ? AND fecha_corte = ?""",
+                (row["vendedor_id"], row["periodo_mes"], row["periodo_anio"], row["fecha_corte"]),
+            )
     return {"ok": True}
 
 
@@ -657,7 +704,7 @@ def obtener_resumen(rid: int):
         d["escala_aplicada"] = json.loads(d["escala_aplicada"])
     if d.get("detalle_facturas"):
         d["detalle_facturas"] = json.loads(d["detalle_facturas"])
-    return d
+    return _add_pendiente(d)
 
 
 # ── Estadísticas ──────────────────────────────────────────────────────────────

@@ -94,6 +94,21 @@ def init_db():
                 value TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS adelantos_comision (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vendedor_id INTEGER NOT NULL REFERENCES vendedores(id),
+                periodo_mes INTEGER NOT NULL,
+                periodo_anio INTEGER NOT NULL,
+                fecha_corte TEXT NOT NULL,
+                total_neto REAL NOT NULL,
+                comision_pagada REAL NOT NULL,
+                porcentaje_aplicado REAL NOT NULL,
+                fecha_pago TEXT NOT NULL,
+                notas TEXT,
+                fecha_generacion TEXT NOT NULL,
+                UNIQUE(vendedor_id, periodo_mes, periodo_anio, fecha_corte)
+            );
+
             CREATE INDEX IF NOT EXISTS idx_facturas_periodo_vendedor
                 ON facturas (vendedor_id, periodo_cobro_mes, periodo_cobro_anio, estado);
 
@@ -108,6 +123,7 @@ def init_db():
             "ALTER TABLE resumenes ADD COLUMN comision_pagada INTEGER DEFAULT 0",
             "ALTER TABLE resumenes ADD COLUMN fecha_pago_comision TEXT",
             "ALTER TABLE resumenes ADD COLUMN fecha_corte TEXT",
+            "ALTER TABLE resumenes ADD COLUMN adelantos_pagados REAL DEFAULT 0",
         ]:
             try:
                 conn.execute(sql)
