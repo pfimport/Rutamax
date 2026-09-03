@@ -20,6 +20,11 @@ from database import (
 from xubio import XubioClient
 
 
+# Cuántos meses hacia atrás sincroniza (para detectar pagos de facturas de meses
+# anteriores). Cubre facturas emitidas en los últimos N meses que se cobraron después.
+SYNC_MESES_ATRAS = 3
+
+
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 def _is_nota_credito(tipo: str) -> bool:
@@ -56,7 +61,7 @@ async def lifespan(app: FastAPI):
             global _sync_running, _last_sync_result
             _sync_running = True
             try:
-                _last_sync_result = _do_sync(XubioClient(client_id, client_secret), 1)
+                _last_sync_result = _do_sync(XubioClient(client_id, client_secret), SYNC_MESES_ATRAS)
             except Exception as e:
                 _last_sync_result = {"error": str(e)}
             finally:
@@ -1119,7 +1124,7 @@ def _run_sync_bg(xubio: XubioClient, meses_atras: int):
 
 
 @app.post("/api/sincronizar")
-def sincronizar(background_tasks: BackgroundTasks, meses_atras: int = 1):
+def sincronizar(background_tasks: BackgroundTasks, meses_atras: int = SYNC_MESES_ATRAS):
     global _sync_running
     if _sync_running:
         raise HTTPException(409, "Ya hay una sincronización en curso")
