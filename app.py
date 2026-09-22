@@ -73,6 +73,22 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Sistema de Comisiones PF", lifespan=lifespan)
 
 
+# Mostrar el detalle real de cualquier error interno (para diagnóstico)
+from fastapi import Request
+from fastapi.responses import JSONResponse
+import traceback as _traceback
+
+
+@app.exception_handler(Exception)
+async def _mostrar_error_real(request: Request, exc: Exception):
+    _traceback.print_exc()
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"{type(exc).__name__}: {exc}"},
+    )
+
+
+
 # ── Pydantic models ──────────────────────────────────────────────────────────
 
 class VendedorCreate(BaseModel):
