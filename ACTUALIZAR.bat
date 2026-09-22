@@ -52,7 +52,10 @@ xcopy /Y /E "%SRCDIR%\*" "%~dp0" >nul
 echo  [4/5] Borrando cache vieja...
 if exist "%~dp0__pycache__" rmdir /s /q "%~dp0__pycache__" >nul 2>&1
 
-echo  [5/5] Limpiando temporales...
+echo  [5/5] Apagando el sistema viejo (para que cargue el codigo nuevo)...
+for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8000 "') do (
+    taskkill /PID %%a /F >nul 2>&1
+)
 del /q "%TMPZIP%" >nul 2>&1
 rmdir /s /q "%TMPDIR%" >nul 2>&1
 
@@ -61,7 +64,8 @@ echo  ============================================
 echo    [OK] ACTUALIZACION COMPLETA!
 echo  ============================================
 echo.
-echo  Ahora abri el sistema con el icono "Comisiones PF"
-echo  o con INICIAR.bat.
+echo  El sistema viejo se apago. Ahora abrilo de nuevo
+echo  (con el icono "Comisiones PF" o con INICIAR.bat)
+echo  para que cargue todos los cambios.
 echo.
 pause
