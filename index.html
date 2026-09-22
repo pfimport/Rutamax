@@ -666,6 +666,47 @@ input[type=checkbox]{width:auto;cursor:pointer}
   </div>
 </div>
 
+<div class="modal-bg" id="modal-cuenta">
+  <div class="modal" style="max-width:820px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <h2 id="cuenta-title">Cuenta</h2>
+      <button class="btn btn-secondary btn-sm" onclick="closeModal('modal-cuenta')">Cerrar</button>
+    </div>
+    <div id="cuenta-content"></div>
+  </div>
+</div>
+
+<div class="modal-bg" id="modal-registrar-pago">
+  <div class="modal" style="max-width:440px">
+    <h2 style="margin-bottom:16px">Registrar pago</h2>
+    <input type="hidden" id="pago-vendedor-id"/>
+    <div id="pago-vendedor-nombre" style="color:var(--muted);font-size:13px;margin-bottom:14px"></div>
+    <label class="label">Fecha del pago</label>
+    <input type="date" id="pago-fecha" style="width:100%;margin-bottom:12px"/>
+    <label class="label">Monto transferido ($)</label>
+    <input type="number" id="pago-monto" placeholder="0" style="width:100%;margin-bottom:12px"/>
+    <label class="label">¿A qué mes corresponde? (opcional)</label>
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <select id="pago-mes" style="flex:1">
+        <option value="">— Sin especificar —</option>
+        <option value="1">Enero</option><option value="2">Febrero</option>
+        <option value="3">Marzo</option><option value="4">Abril</option>
+        <option value="5">Mayo</option><option value="6">Junio</option>
+        <option value="7">Julio</option><option value="8">Agosto</option>
+        <option value="9">Septiembre</option><option value="10">Octubre</option>
+        <option value="11">Noviembre</option><option value="12">Diciembre</option>
+      </select>
+      <input type="number" id="pago-anio" placeholder="Año" style="width:90px"/>
+    </div>
+    <label class="label">Nota (opcional)</label>
+    <input type="text" id="pago-nota" placeholder="Ej: adelanto, saldo, transferencia Galicia" style="width:100%;margin-bottom:16px"/>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-registrar-pago')">Cancelar</button>
+      <button class="btn btn-green" onclick="confirmarRegistrarPago()">💾 Guardar pago</button>
+    </div>
+  </div>
+</div>
+
 <script>
 // ── State ────────────────────────────────────────────────────────────────────
 const MESES = ['','Enero','Febrero','Marzo','Abril','Mayo','Junio',
@@ -901,6 +942,7 @@ async function loadVendedores() {
           <td><span class="chip ${v.activo?'chip-active':'chip-inactive'}">${v.activo?'Activo':'Inactivo'}</span></td>
           <td>${v.fecha_alta?.slice(0,10)||''}</td>
           <td style="display:flex;gap:6px">
+            <button class="btn btn-green btn-sm" onclick="abrirCuenta(${v.id})" title="Cuenta: comisiones y pagos">💰 Cuenta</button>
             <button class="btn btn-secondary btn-sm" onclick='openModalVendedor(${JSON.stringify(v)})'>✏️</button>
             <button class="btn btn-danger btn-sm" onclick="toggleActivo(${v.id},${v.activo?0:1})">${v.activo?'Desactivar':'Activar'}</button>
           </td>
@@ -1568,6 +1610,136 @@ async function desmarcarPagada(rid) {
     await api(`/resumenes/${rid}/desmarcar-pagada`, { method: 'POST' });
     toast('Comisión desmarcada como pagada');
     loadResumenes();
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+// ── Cuenta de la vendedora (comisiones vs pagos) ───────────────────────────────
+async function abrirCuenta(vid) {
+  try {
+    const c = await api(`/vendedores/${vid}/cuenta`);
+    window._cuentaActual = c;
+    $('cuenta-title').textContent = `Cuenta — ${c.vendedor.nombre}`;
+
+    const saldoColor = c.saldo > 0 ? 'var(--yellow)' : 'var(--green)';
+    const saldoLabel = c.saldo > 0 ? 'Falta pagar' : (c.saldo < 0 ? 'Pagado de más' : 'Al día');
+
+    const mesesRows = c.meses.map(m => {
+      const det = (m.detalle_facturas||[]).map(f =>
+        `<tr><td style="padding-left:24px;color:var(--muted)">${f.numero||'—'}</td>
+             <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
+             <td>${f.cliente||''}</td>
+             <td class="fmt-currency">${fmt(f.neto)}</td></tr>`
+      ).join('');
+      const corte = m.fecha_corte ? ` <span style="font-size:11px;color:var(--muted)">(corte ${m.fecha_corte.slice(0,10)})</span>` : '';
+      return `
+        <tr style="font-weight:600;cursor:pointer" onclick="this.nextElementSibling.hidden=!this.nextElementSibling.hidden">
+          <td>▸ ${MESES[m.periodo_mes]} ${m.periodo_anio}${corte}</td>
+          <td>${fmt(m.total_cobrado_neto)}</td>
+          <td><span class="pill pill-purple">${tramosResumen(m.total_cobrado_neto, escalaDe(vid))}</span></td>
+          <td class="fmt-currency" style="color:var(--green)">${fmt(m.comision_calculada)}</td>
+        </tr>
+        <tr hidden><td colspan="4" style="padding:0">
+          <table style="width:100%;background:var(--surface2)">
+            <thead><tr><th style="padding-left:24px">Factura</th><th>Fecha cobro</th><th>Cliente</th><th>Neto</th></tr></thead>
+            <tbody>${det||'<tr><td colspan="4" style="padding-left:24px;color:var(--muted)">Sin facturas</td></tr>'}</tbody>
+          </table>
+        </td></tr>`;
+    }).join('');
+
+    const pagosRows = c.pagos.map(p => {
+      const periodo = p.periodo_mes ? `${MESES[p.periodo_mes]} ${p.periodo_anio||''}` : '—';
+      return `
+        <tr>
+          <td>${p.fecha_pago?.slice(0,10)||''}</td>
+          <td class="fmt-currency" style="color:var(--green)">${fmt(p.monto)}</td>
+          <td>${periodo}</td>
+          <td>${p.nota||''}</td>
+          <td><button class="btn btn-danger btn-sm" onclick="eliminarPago(${p.id},${vid})" title="Borrar">🗑</button></td>
+        </tr>`;
+    }).join('');
+
+    $('cuenta-content').innerHTML = `
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px">
+        <div style="background:var(--surface2);border-radius:8px;padding:12px">
+          <div class="label">Comisión liquidada</div>
+          <div style="font-size:20px;font-weight:700">${fmt(c.total_liquidado)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px">
+          <div class="label">Total pagado</div>
+          <div style="font-size:20px;font-weight:700;color:var(--green)">${fmt(c.total_pagado)}</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:8px;padding:12px">
+          <div class="label">${saldoLabel}</div>
+          <div style="font-size:20px;font-weight:700;color:${saldoColor}">${fmt(Math.abs(c.saldo))}</div>
+        </div>
+      </div>
+
+      <div class="label" style="margin-bottom:6px">Comisiones por mes <span style="color:var(--muted);font-weight:400">(clic para ver las facturas)</span></div>
+      <div class="tbl-wrap" style="margin-bottom:20px;max-height:240px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Período</th><th>Cobrado neto</th><th>Tramos</th><th>Comisión</th></tr></thead>
+          <tbody>${mesesRows||'<tr><td colspan="4" style="color:var(--muted)">Sin resúmenes guardados</td></tr>'}</tbody>
+        </table>
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+        <span class="label">Pagos registrados</span>
+        <button class="btn btn-green btn-sm" onclick="abrirRegistrarPago(${vid},'${c.vendedor.nombre.replace(/'/g,"")}')">➕ Registrar pago</button>
+      </div>
+      <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
+        <table>
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Mes que cubre</th><th>Nota</th><th></th></tr></thead>
+          <tbody>${pagosRows||'<tr><td colspan="5" style="color:var(--muted)">Todavía no registraste ningún pago</td></tr>'}</tbody>
+        </table>
+      </div>`;
+    openModal('modal-cuenta');
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+function escalaDe(vid) {
+  const v = vendedoresList.find(x => x.id === vid);
+  return v ? v.escala_comision : [];
+}
+
+function abrirRegistrarPago(vid, nombre) {
+  $('pago-vendedor-id').value = vid;
+  $('pago-vendedor-nombre').textContent = nombre;
+  $('pago-fecha').value = new Date().toISOString().slice(0,10);
+  $('pago-monto').value = '';
+  $('pago-mes').value = '';
+  $('pago-anio').value = new Date().getFullYear();
+  $('pago-nota').value = '';
+  openModal('modal-registrar-pago');
+}
+
+async function confirmarRegistrarPago() {
+  const vid = parseInt($('pago-vendedor-id').value);
+  const fecha_pago = $('pago-fecha').value;
+  const monto = parseFloat($('pago-monto').value);
+  if (!fecha_pago) { toast('Elegí la fecha del pago', 'err'); return; }
+  if (!monto || monto <= 0) { toast('Ingresá un monto válido', 'err'); return; }
+  const mes = $('pago-mes').value;
+  const body = {
+    fecha_pago,
+    monto,
+    periodo_mes: mes ? parseInt(mes) : null,
+    periodo_anio: mes ? parseInt($('pago-anio').value) : null,
+    nota: $('pago-nota').value || null,
+  };
+  try {
+    await api(`/vendedores/${vid}/pagos`, {method:'POST', body:JSON.stringify(body)});
+    toast('✓ Pago registrado');
+    closeModal('modal-registrar-pago');
+    abrirCuenta(vid);
+  } catch(e) { toast(e.message, 'err'); }
+}
+
+async function eliminarPago(pid, vid) {
+  if (!confirm('¿Borrar este pago?')) return;
+  try {
+    await api(`/pagos/${pid}`, {method:'DELETE'});
+    toast('Pago borrado');
+    abrirCuenta(vid);
   } catch(e) { toast(e.message, 'err'); }
 }
 

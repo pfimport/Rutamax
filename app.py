@@ -130,6 +130,14 @@ class MarcarPagadaRequest(BaseModel):
     fecha_pago: str  # YYYY-MM-DD
 
 
+class PagoComisionRequest(BaseModel):
+    fecha_pago: str            # YYYY-MM-DD
+    monto: float
+    periodo_mes: Optional[int] = None
+    periodo_anio: Optional[int] = None
+    nota: Optional[str] = None
+
+
 # ── Vendedores ────────────────────────────────────────────────────────────────
 
 @app.get("/api/vendedores")
@@ -710,6 +718,83 @@ def obtener_resumen(rid: int):
     if d.get("detalle_facturas"):
         d["detalle_facturas"] = json.loads(d["detalle_facturas"])
     return _add_pendiente(d)
+
+
+# ── Cuenta de la vendedora (comisiones liquidadas vs pagos reales) ─────────────
+
+@app.get("/api/vendedores/{vid}/cuenta")
+def cuenta_vendedor(vid: int):
+    """Estado de cuenta: comisión liquidada por mes vs pagos registrados."""
+    with get_conn() as conn:
+        vend = conn.execute("SELECT * FROM vendedores WHERE id = ?", (vid,)).fetchone()
+        if not vend:
+            raise HTTPException(404, "Vendedor no encontrado")
+
+        # Comisión liquidada por mes (un resumen por período)
+        resumenes = conn.execute(
+            """SELECT id, periodo_mes, periodo_anio, total_cobrado_neto,
+                      comision_calculada, porcentaje_aplicado, fecha_corte,
+                      detalle_facturas, fecha_generacion
+               FROM resumenes
+               WHERE vendedor_id = ?
+               ORDER BY periodo_anio DESC, periodo_mes DESC""",
+            (vid,),
+        ).fetchall()
+        meses = []
+        total_liquidado = 0.0
+        for r in resumenes:
+            d = dict(r)
+            if d.get("detalle_facturas"):
+                try:
+                    d["detalle_facturas"] = json.loads(d["detalle_facturas"])
+                except Exception:
+                    d["detalle_facturas"] = []
+            else:
+                d["detalle_facturas"] = []
+            total_liquidado += d["comision_calculada"] or 0
+            meses.append(d)
+
+        # Pagos registrados
+        pagos = conn.execute(
+            """SELECT id, fecha_pago, monto, periodo_mes, periodo_anio, nota, fecha_registro
+               FROM pagos_comision
+               WHERE vendedor_id = ?
+               ORDER BY fecha_pago DESC, id DESC""",
+            (vid,),
+        ).fetchall()
+        pagos_list = rows_to_list(pagos)
+        total_pagado = sum(p["monto"] or 0 for p in pagos_list)
+
+    return {
+        "vendedor": {"id": vend["id"], "nombre": vend["nombre"]},
+        "meses": meses,
+        "pagos": pagos_list,
+        "total_liquidado": round(total_liquidado, 2),
+        "total_pagado": round(total_pagado, 2),
+        "saldo": round(total_liquidado - total_pagado, 2),
+    }
+
+
+@app.post("/api/vendedores/{vid}/pagos", status_code=201)
+def registrar_pago(vid: int, body: PagoComisionRequest):
+    with get_conn() as conn:
+        vend = conn.execute("SELECT id FROM vendedores WHERE id = ?", (vid,)).fetchone()
+        if not vend:
+            raise HTTPException(404, "Vendedor no encontrado")
+        cur = conn.execute(
+            """INSERT INTO pagos_comision
+               (vendedor_id, fecha_pago, monto, periodo_mes, periodo_anio, nota, fecha_registro)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (vid, body.fecha_pago, body.monto, body.periodo_mes,
+             body.periodo_anio, body.nota, datetime.now().isoformat()),
+        )
+    return {"id": cur.lastrowid, "ok": True}
+
+
+@app.delete("/api/pagos/{pid}", status_code=204)
+def eliminar_pago(pid: int):
+    with get_conn() as conn:
+        conn.execute("DELETE FROM pagos_comision WHERE id = ?", (pid,))
 
 
 # ── Estadísticas ──────────────────────────────────────────────────────────────

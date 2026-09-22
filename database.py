@@ -109,6 +109,17 @@ def init_db():
                 UNIQUE(vendedor_id, periodo_mes, periodo_anio, fecha_corte)
             );
 
+            CREATE TABLE IF NOT EXISTS pagos_comision (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                vendedor_id INTEGER NOT NULL REFERENCES vendedores(id),
+                fecha_pago TEXT NOT NULL,
+                monto REAL NOT NULL,
+                periodo_mes INTEGER,
+                periodo_anio INTEGER,
+                nota TEXT,
+                fecha_registro TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_facturas_periodo_vendedor
                 ON facturas (vendedor_id, periodo_cobro_mes, periodo_cobro_anio, estado);
 
