@@ -722,10 +722,27 @@ def obtener_resumen(rid: int):
 
 # ── Cuenta de la vendedora (comisiones liquidadas vs pagos reales) ─────────────
 
+def _ensure_pagos_table(conn):
+    """Crea la tabla de pagos si falta (por si la base es de una versión anterior)."""
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS pagos_comision (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vendedor_id INTEGER NOT NULL,
+            fecha_pago TEXT NOT NULL,
+            monto REAL NOT NULL,
+            periodo_mes INTEGER,
+            periodo_anio INTEGER,
+            nota TEXT,
+            fecha_registro TEXT NOT NULL
+        )
+    """)
+
+
 @app.get("/api/vendedores/{vid}/cuenta")
 def cuenta_vendedor(vid: int):
     """Estado de cuenta: comisión liquidada por mes vs pagos registrados."""
     with get_conn() as conn:
+        _ensure_pagos_table(conn)
         vend = conn.execute("SELECT * FROM vendedores WHERE id = ?", (vid,)).fetchone()
         if not vend:
             raise HTTPException(404, "Vendedor no encontrado")
@@ -778,6 +795,7 @@ def cuenta_vendedor(vid: int):
 @app.post("/api/vendedores/{vid}/pagos", status_code=201)
 def registrar_pago(vid: int, body: PagoComisionRequest):
     with get_conn() as conn:
+        _ensure_pagos_table(conn)
         vend = conn.execute("SELECT id FROM vendedores WHERE id = ?", (vid,)).fetchone()
         if not vend:
             raise HTTPException(404, "Vendedor no encontrado")
