@@ -117,6 +117,7 @@ def init_db():
                 periodo_mes INTEGER,
                 periodo_anio INTEGER,
                 nota TEXT,
+                comprobante TEXT,
                 fecha_registro TEXT NOT NULL
             );
 

@@ -681,6 +681,9 @@ input[type=checkbox]{width:auto;cursor:pointer}
     <h2 style="margin-bottom:16px">Registrar pago</h2>
     <input type="hidden" id="pago-vendedor-id"/>
     <div id="pago-vendedor-nombre" style="color:var(--muted);font-size:13px;margin-bottom:14px"></div>
+    <label class="label">Comprobante PDF (opcional — lo lee solo)</label>
+    <input type="file" id="pago-comprobante" accept="application/pdf,image/*" onchange="onComprobanteSeleccionado()" style="width:100%;margin-bottom:4px"/>
+    <div id="pago-comprobante-estado" style="font-size:12px;color:var(--muted);margin-bottom:12px;min-height:16px"></div>
     <label class="label">Fecha del pago</label>
     <input type="date" id="pago-fecha" style="width:100%;margin-bottom:12px"/>
     <label class="label">Monto transferido ($)</label>
@@ -1648,12 +1651,16 @@ async function abrirCuenta(vid) {
 
     const pagosRows = c.pagos.map(p => {
       const periodo = p.periodo_mes ? `${MESES[p.periodo_mes]} ${p.periodo_anio||''}` : '—';
+      const comp = p.comprobante
+        ? `<a href="/api/pagos/${p.id}/comprobante" target="_blank" class="btn btn-secondary btn-sm" style="text-decoration:none">📎 Ver</a>`
+        : '<span style="color:var(--muted);font-size:12px">—</span>';
       return `
         <tr>
           <td>${p.fecha_pago?.slice(0,10)||''}</td>
           <td class="fmt-currency" style="color:var(--green)">${fmt(p.monto)}</td>
           <td>${periodo}</td>
           <td>${p.nota||''}</td>
+          <td>${comp}</td>
           <td><button class="btn btn-danger btn-sm" onclick="eliminarPago(${p.id},${vid})" title="Borrar">🗑</button></td>
         </tr>`;
     }).join('');
@@ -1688,8 +1695,8 @@ async function abrirCuenta(vid) {
       </div>
       <div class="tbl-wrap" style="max-height:200px;overflow-y:auto">
         <table>
-          <thead><tr><th>Fecha</th><th>Monto</th><th>Mes que cubre</th><th>Nota</th><th></th></tr></thead>
-          <tbody>${pagosRows||'<tr><td colspan="5" style="color:var(--muted)">Todavía no registraste ningún pago</td></tr>'}</tbody>
+          <thead><tr><th>Fecha</th><th>Monto</th><th>Mes que cubre</th><th>Nota</th><th>Comprobante</th><th></th></tr></thead>
+          <tbody>${pagosRows||'<tr><td colspan="6" style="color:var(--muted)">Todavía no registraste ningún pago</td></tr>'}</tbody>
         </table>
       </div>`;
     openModal('modal-cuenta');
@@ -1709,7 +1716,50 @@ function abrirRegistrarPago(vid, nombre) {
   $('pago-mes').value = '';
   $('pago-anio').value = new Date().getFullYear();
   $('pago-nota').value = '';
+  $('pago-comprobante').value = '';
+  $('pago-comprobante-estado').textContent = '';
+  _pagoComprobante = null;
   openModal('modal-registrar-pago');
+}
+
+let _pagoComprobante = null;   // {nombre, datos(base64)}
+
+function archivoABase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function onComprobanteSeleccionado() {
+  const f = $('pago-comprobante').files[0];
+  const est = $('pago-comprobante-estado');
+  if (!f) { _pagoComprobante = null; est.textContent = ''; return; }
+  try {
+    const datos = await archivoABase64(f);
+    _pagoComprobante = { nombre: f.name, datos };
+    est.textContent = '📎 ' + f.name;
+    if (f.name.toLowerCase().endsWith('.pdf')) {
+      est.textContent = '📎 ' + f.name + ' — leyendo...';
+      try {
+        const r = await api('/comprobantes/leer', {method:'POST', body: JSON.stringify({nombre:f.name, datos})});
+        if (r.monto) $('pago-monto').value = r.monto;
+        if (r.fecha_pago) $('pago-fecha').value = r.fecha_pago;
+        est.textContent = (r.monto || r.fecha_pago)
+          ? '📎 ' + f.name + ' — ✓ leído automáticamente (revisá los datos)'
+          : '📎 ' + f.name + ' — no se pudo leer, cargá los datos a mano';
+      } catch(e) {
+        est.textContent = '📎 ' + f.name + ' — cargá los datos a mano';
+      }
+    } else {
+      est.textContent = '📎 ' + f.name + ' (imagen — cargá los datos a mano)';
+    }
+  } catch(e) {
+    est.textContent = 'No se pudo leer el archivo';
+    _pagoComprobante = null;
+  }
 }
 
 async function confirmarRegistrarPago() {
@@ -1726,6 +1776,10 @@ async function confirmarRegistrarPago() {
     periodo_anio: mes ? parseInt($('pago-anio').value) : null,
     nota: $('pago-nota').value || null,
   };
+  if (_pagoComprobante) {
+    body.comprobante_nombre = _pagoComprobante.nombre;
+    body.comprobante_datos = _pagoComprobante.datos;
+  }
   try {
     await api(`/vendedores/${vid}/pagos`, {method:'POST', body:JSON.stringify(body)});
     toast('✓ Pago registrado');

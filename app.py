@@ -1,6 +1,7 @@
 import csv
 import io
 import json
+import base64
 import asyncio
 import threading
 from datetime import datetime, date
@@ -152,6 +153,13 @@ class PagoComisionRequest(BaseModel):
     periodo_mes: Optional[int] = None
     periodo_anio: Optional[int] = None
     nota: Optional[str] = None
+    comprobante_nombre: Optional[str] = None   # nombre del archivo (opcional)
+    comprobante_datos: Optional[str] = None    # contenido en base64 (opcional)
+
+
+class LeerComprobanteRequest(BaseModel):
+    nombre: str
+    datos: str  # base64
 
 
 # ── Vendedores ────────────────────────────────────────────────────────────────
@@ -763,12 +771,46 @@ def _ensure_pagos_table(conn):
         ("periodo_anio", "INTEGER"),
         ("nota", "TEXT"),
         ("fecha_registro", "TEXT"),
+        ("comprobante", "TEXT"),
     ]:
         if col not in existentes:
             try:
                 conn.execute(f"ALTER TABLE pagos_comision ADD COLUMN {col} {decl}")
             except Exception:
                 pass
+
+
+# Carpeta donde se guardan los comprobantes subidos
+COMPROBANTES_DIR = Path(__file__).parent / "comprobantes"
+
+
+def _parse_comprobante_pdf(pdf_bytes: bytes) -> dict:
+    """Intenta leer monto y fecha de un comprobante PDF. Devuelve {} si no puede."""
+    try:
+        import pypdf
+        import io as _io
+        reader = pypdf.PdfReader(_io.BytesIO(pdf_bytes))
+        texto = "\n".join((p.extract_text() or "") for p in reader.pages)
+    except Exception:
+        return {}
+
+    import re as _re
+    result = {}
+    montos = _re.findall(r'\$\s*([\d\.]+(?:,\d+)?)', texto)
+    if montos:
+        s = montos[0].strip()
+        try:
+            if "," in s:
+                entero, dec = s.rsplit(",", 1)
+                result["monto"] = float(entero.replace(".", "") + "." + dec)
+            else:
+                result["monto"] = float(s.replace(".", ""))
+        except Exception:
+            pass
+    m = _re.search(r'(\d{2})/(\d{2})/(\d{4})', texto)
+    if m:
+        result["fecha_pago"] = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
+    return result
 
 
 @app.get("/api/vendedores/{vid}/cuenta")
@@ -806,7 +848,8 @@ def cuenta_vendedor(vid: int):
 
         # Pagos registrados
         pagos = conn.execute(
-            """SELECT id, fecha_pago, monto, periodo_mes, periodo_anio, nota, fecha_registro
+            """SELECT id, fecha_pago, monto, periodo_mes, periodo_anio, nota,
+                      fecha_registro, comprobante
                FROM pagos_comision
                WHERE vendedor_id = ?
                ORDER BY fecha_pago DESC, id DESC""",
@@ -825,6 +868,18 @@ def cuenta_vendedor(vid: int):
     }
 
 
+@app.post("/api/comprobantes/leer")
+def leer_comprobante(body: LeerComprobanteRequest):
+    """Lee monto y fecha de un comprobante PDF. Devuelve {} si no puede."""
+    try:
+        pdf_bytes = base64.b64decode(body.datos)
+    except Exception:
+        return {}
+    if not body.nombre.lower().endswith(".pdf"):
+        return {}   # solo PDF; fotos/imágenes se cargan a mano
+    return _parse_comprobante_pdf(pdf_bytes)
+
+
 @app.post("/api/vendedores/{vid}/pagos", status_code=201)
 def registrar_pago(vid: int, body: PagoComisionRequest):
     with get_conn() as conn:
@@ -839,12 +894,43 @@ def registrar_pago(vid: int, body: PagoComisionRequest):
             (vid, body.fecha_pago, body.monto, body.periodo_mes,
              body.periodo_anio, body.nota, datetime.now().isoformat()),
         )
-    return {"id": cur.lastrowid, "ok": True}
+        pid = cur.lastrowid
+
+        # Guardar comprobante adjunto (si vino)
+        if body.comprobante_datos and body.comprobante_nombre:
+            try:
+                COMPROBANTES_DIR.mkdir(exist_ok=True)
+                ext = Path(body.comprobante_nombre).suffix or ".pdf"
+                safe_ext = ext if len(ext) <= 6 else ".pdf"
+                fname = f"pago_{pid}{safe_ext}"
+                (COMPROBANTES_DIR / fname).write_bytes(base64.b64decode(body.comprobante_datos))
+                conn.execute("UPDATE pagos_comision SET comprobante = ? WHERE id = ?", (fname, pid))
+            except Exception:
+                pass  # si falla el guardado del archivo, el pago igual queda registrado
+    return {"id": pid, "ok": True}
+
+
+@app.get("/api/pagos/{pid}/comprobante")
+def ver_comprobante(pid: int):
+    with get_conn() as conn:
+        row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
+    if not row or not row["comprobante"]:
+        raise HTTPException(404, "Sin comprobante")
+    ruta = COMPROBANTES_DIR / row["comprobante"]
+    if not ruta.exists():
+        raise HTTPException(404, "Archivo no encontrado")
+    return FileResponse(str(ruta))
 
 
 @app.delete("/api/pagos/{pid}", status_code=204)
 def eliminar_pago(pid: int):
     with get_conn() as conn:
+        row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
+        if row and row["comprobante"]:
+            try:
+                (COMPROBANTES_DIR / row["comprobante"]).unlink(missing_ok=True)
+            except Exception:
+                pass
         conn.execute("DELETE FROM pagos_comision WHERE id = ?", (pid,))
 
 
