@@ -1312,15 +1312,17 @@ async function loadResumenes() {
       </tr></thead>
       <tbody>
       ${data.map(r => {
-        const pagada = r.comision_pagada;
-        const hayAdelantos = (r.adelantos_pagados||0) > 0 && !r.fecha_corte;
-        const comisionAPagar = hayAdelantos ? r.comision_pendiente : r.comision_calculada;
-        const estadoPago = pagada
-          ? `<span class="pill pill-green">✓ Pagada ${r.fecha_pago_comision?.slice(0,10)||''}</span>`
-          : `<span class="pill pill-yellow">Pendiente</span>`;
+        const estado = r.estado_pago || 'pendiente';
+        const falta = (r.comision_calculada||0) - (r.pagado_mes||0);
+        const estadoPago = estado === 'pagada'
+          ? `<span class="pill pill-green">✓ Pagada</span>`
+          : (estado === 'parcial'
+              ? `<span class="pill pill-yellow">Parcial · falta ${fmt(falta)}</span>`
+              : `<span class="pill pill-yellow">Pendiente</span>`);
         const corte = r.fecha_corte ? ` <span style="font-size:11px;color:var(--muted)">corte ${r.fecha_corte.slice(0,10)}</span>` : '';
+        const hayAdelantos = (r.adelantos_pagados||0) > 0 && !r.fecha_corte;
         const comisionCell = hayAdelantos
-          ? `<div style="color:var(--green);font-weight:600">${fmt(comisionAPagar)}</div>
+          ? `<div style="color:var(--green);font-weight:600">${fmt(r.comision_pendiente)}</div>
              <div style="font-size:11px;color:var(--muted)">total ${fmt(r.comision_calculada)} − adel. ${fmt(r.adelantos_pagados)}</div>`
           : `<span class="fmt-currency" style="color:var(--green);font-weight:600">${fmt(r.comision_calculada)}</span>`;
         return `
@@ -1334,10 +1336,7 @@ async function loadResumenes() {
           <td>${estadoPago}</td>
           <td style="display:flex;gap:4px;flex-wrap:wrap">
             <button class="btn btn-secondary btn-sm" onclick="verResumen(${r.id})" title="Ver detalle">👁</button>
-            ${!pagada
-              ? `<button class="btn btn-green btn-sm" onclick="abrirPagarComision(${r.id},'${r.vendedor_nombre}','${MESES[r.periodo_mes]} ${r.periodo_anio}',${comisionAPagar},${hayAdelantos})">💰 Pagar</button>`
-              : `<button class="btn btn-secondary btn-sm" onclick="desmarcarPagada(${r.id})" title="Desmarcar">↩</button>`
-            }
+            <button class="btn btn-green btn-sm" onclick="abrirCuenta(${r.vendedor_id})" title="Registrar/ver pagos">💰 Cuenta</button>
           </td>
         </tr>`;
       }).join('')}
@@ -1376,14 +1375,10 @@ async function verResumen(id) {
     const det = r.detalle_facturas || [];
     const periodo = `${MESES[r.periodo_mes]} ${r.periodo_anio}`;
     const corteStr = r.fecha_corte ? ` · corte ${r.fecha_corte.slice(0,10)}` : '';
-    const pagadaStr = r.comision_pagada
-      ? `<span class="pill pill-green">✓ Comisión pagada el ${r.fecha_pago_comision?.slice(0,10)||''}</span>`
-      : `<span class="pill pill-yellow">⏳ Comisión pendiente de pago</span>`;
 
     $('det-title').textContent = `${r.vendedor_nombre} — ${periodo}`;
     $('det-content').innerHTML = `
       <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
-        ${pagadaStr}
         ${r.fecha_corte ? `<span class="pill" style="background:#00d4ff22;color:var(--cyan)">Corte: ${r.fecha_corte.slice(0,10)}</span>` : ''}
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px">
@@ -1470,9 +1465,7 @@ async function verResumen(id) {
       <button class="btn btn-secondary" onclick="closeModal('modal-det-resumen')">Cerrar</button>
       <button class="btn btn-secondary" onclick="copiarWhatsApp(${id})">📱 Copiar para WhatsApp</button>
       <button class="btn btn-secondary" onclick="imprimirResumen(${id})">🖨 Imprimir</button>
-      ${!r.comision_pagada
-        ? `<button class="btn btn-green" onclick="closeModal('modal-det-resumen');abrirPagarComision(${r.id},'${r.vendedor_nombre}','${periodo}',${(r.adelantos_pagados||0)>0&&!r.fecha_corte?r.comision_pendiente:r.comision_calculada},${(r.adelantos_pagados||0)>0&&!r.fecha_corte})">💰 Marcar Pagada</button>`
-        : ''}
+      <button class="btn btn-green" onclick="closeModal('modal-det-resumen');abrirCuenta(${r.vendedor_id})">💰 Registrar pago</button>
     `;
     // Guardar datos del resumen para WhatsApp/imprimir
     window._resumenActual = r;

@@ -572,6 +572,10 @@ def _add_pendiente(d: dict) -> dict:
 @app.get("/api/resumenes")
 def listar_resumenes(vendedor_id: Optional[int] = None):
     with get_conn() as conn:
+        try:
+            _ensure_pagos_table(conn)
+        except Exception:
+            pass
         cond = "WHERE r.vendedor_id = ?" if vendedor_id else ""
         params = [vendedor_id] if vendedor_id else []
         rows = conn.execute(
@@ -582,6 +586,18 @@ def listar_resumenes(vendedor_id: Optional[int] = None):
                 ORDER BY r.periodo_anio DESC, r.periodo_mes DESC, v.nombre""",
             params,
         ).fetchall()
+        # Pagos reales (de la Cuenta) agrupados por vendedor+mes, para el estado de pago
+        pagos_por_mes = {}
+        try:
+            for p in conn.execute(
+                """SELECT vendedor_id, periodo_mes, periodo_anio, SUM(monto) as t
+                   FROM pagos_comision
+                   WHERE periodo_mes IS NOT NULL AND periodo_anio IS NOT NULL
+                   GROUP BY vendedor_id, periodo_mes, periodo_anio"""
+            ).fetchall():
+                pagos_por_mes[(p["vendedor_id"], p["periodo_mes"], p["periodo_anio"])] = p["t"] or 0
+        except Exception:
+            pass
     result = []
     for r in rows:
         d = dict(r)
@@ -589,7 +605,18 @@ def listar_resumenes(vendedor_id: Optional[int] = None):
             d["escala_aplicada"] = json.loads(d["escala_aplicada"])
         if d.get("detalle_facturas"):
             d["detalle_facturas"] = json.loads(d["detalle_facturas"])
-        result.append(_add_pendiente(d))
+        _add_pendiente(d)
+        # Estado de pago derivado de los pagos reales cargados en la Cuenta
+        pagado = pagos_por_mes.get((d.get("vendedor_id"), d.get("periodo_mes"), d.get("periodo_anio")), 0)
+        com = d.get("comision_calculada") or 0
+        d["pagado_mes"] = round(pagado, 2)
+        if pagado <= 0:
+            d["estado_pago"] = "pendiente"
+        elif pagado + 1 >= com:   # +1 = tolerancia de redondeo
+            d["estado_pago"] = "pagada"
+        else:
+            d["estado_pago"] = "parcial"
+        result.append(d)
     return result
 
 
