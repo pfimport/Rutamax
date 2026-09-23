@@ -739,7 +739,8 @@ def obtener_resumen(rid: int):
 # ── Cuenta de la vendedora (comisiones liquidadas vs pagos reales) ─────────────
 
 def _ensure_pagos_table(conn):
-    """Crea la tabla de pagos si falta (por si la base es de una versión anterior)."""
+    """Crea la tabla de pagos si falta, y agrega columnas que falten
+    (por si quedó una versión incompleta de una actualización anterior)."""
     conn.execute("""
         CREATE TABLE IF NOT EXISTS pagos_comision (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -752,6 +753,22 @@ def _ensure_pagos_table(conn):
             fecha_registro TEXT NOT NULL
         )
     """)
+    # Reparar tablas viejas/incompletas: agregar cualquier columna que falte
+    existentes = {r[1] for r in conn.execute("PRAGMA table_info(pagos_comision)").fetchall()}
+    for col, decl in [
+        ("vendedor_id", "INTEGER"),
+        ("fecha_pago", "TEXT"),
+        ("monto", "REAL"),
+        ("periodo_mes", "INTEGER"),
+        ("periodo_anio", "INTEGER"),
+        ("nota", "TEXT"),
+        ("fecha_registro", "TEXT"),
+    ]:
+        if col not in existentes:
+            try:
+                conn.execute(f"ALTER TABLE pagos_comision ADD COLUMN {col} {decl}")
+            except Exception:
+                pass
 
 
 @app.get("/api/vendedores/{vid}/cuenta")
