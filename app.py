@@ -817,17 +817,18 @@ def _parse_comprobante_pdf(pdf_bytes: bytes) -> dict:
 def cuenta_vendedor(vid: int):
     """Estado de cuenta: comisión liquidada por mes vs pagos registrados."""
     with get_conn() as conn:
-        _ensure_pagos_table(conn)
+        try:
+            _ensure_pagos_table(conn)
+        except Exception:
+            pass  # si la migración falla (ej: base bloqueada), seguimos igual
         vend = conn.execute("SELECT * FROM vendedores WHERE id = ?", (vid,)).fetchone()
         if not vend:
             raise HTTPException(404, "Vendedor no encontrado")
 
-        # Comisión liquidada por mes (un resumen por período)
+        # Comisión liquidada por mes (un resumen por período).
+        # SELECT * para no romper si falta alguna columna en bases viejas.
         resumenes = conn.execute(
-            """SELECT id, periodo_mes, periodo_anio, total_cobrado_neto,
-                      comision_calculada, porcentaje_aplicado, fecha_corte,
-                      detalle_facturas, fecha_generacion
-               FROM resumenes
+            """SELECT * FROM resumenes
                WHERE vendedor_id = ?
                ORDER BY periodo_anio DESC, periodo_mes DESC""",
             (vid,),
@@ -843,20 +844,18 @@ def cuenta_vendedor(vid: int):
                     d["detalle_facturas"] = []
             else:
                 d["detalle_facturas"] = []
-            total_liquidado += d["comision_calculada"] or 0
+            total_liquidado += d.get("comision_calculada") or 0
             meses.append(d)
 
-        # Pagos registrados
+        # Pagos registrados. SELECT * para no romper si falta 'comprobante' u otra columna.
         pagos = conn.execute(
-            """SELECT id, fecha_pago, monto, periodo_mes, periodo_anio, nota,
-                      fecha_registro, comprobante
-               FROM pagos_comision
+            """SELECT * FROM pagos_comision
                WHERE vendedor_id = ?
                ORDER BY fecha_pago DESC, id DESC""",
             (vid,),
         ).fetchall()
         pagos_list = rows_to_list(pagos)
-        total_pagado = sum(p["monto"] or 0 for p in pagos_list)
+        total_pagado = sum((p.get("monto") or 0) for p in pagos_list)
 
     return {
         "vendedor": {"id": vend["id"], "nombre": vend["nombre"]},
@@ -913,7 +912,10 @@ def registrar_pago(vid: int, body: PagoComisionRequest):
 @app.get("/api/pagos/{pid}/comprobante")
 def ver_comprobante(pid: int):
     with get_conn() as conn:
-        row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
+        try:
+            row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
+        except Exception:
+            raise HTTPException(404, "Sin comprobante")
     if not row or not row["comprobante"]:
         raise HTTPException(404, "Sin comprobante")
     ruta = COMPROBANTES_DIR / row["comprobante"]
@@ -925,12 +927,15 @@ def ver_comprobante(pid: int):
 @app.delete("/api/pagos/{pid}", status_code=204)
 def eliminar_pago(pid: int):
     with get_conn() as conn:
-        row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
-        if row and row["comprobante"]:
-            try:
-                (COMPROBANTES_DIR / row["comprobante"]).unlink(missing_ok=True)
-            except Exception:
-                pass
+        try:
+            row = conn.execute("SELECT comprobante FROM pagos_comision WHERE id = ?", (pid,)).fetchone()
+            if row and row["comprobante"]:
+                try:
+                    (COMPROBANTES_DIR / row["comprobante"]).unlink(missing_ok=True)
+                except Exception:
+                    pass
+        except Exception:
+            pass
         conn.execute("DELETE FROM pagos_comision WHERE id = ?", (pid,))
 
 
