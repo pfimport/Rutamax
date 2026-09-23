@@ -43,7 +43,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-REM ── Detectar y copiar a la nube (OneDrive o Google Drive)
+REM ── Detectar y copiar a la nube (OneDrive, Google Drive de escritorio, o Google Drive streaming G:/H:...)
 set CLOUD_NOMBRE=
 set CLOUD_DEST=
 
@@ -58,6 +58,15 @@ if defined OneDrive (
     set CLOUD_NOMBRE=Google Drive
 ) else if exist "%USERPROFILE%\Mi unidad" (
     set CLOUD_DEST=%USERPROFILE%\Mi unidad\Backups\ComisionesPF
+    set CLOUD_NOMBRE=Google Drive
+) else if exist "G:\Mi unidad" (
+    set CLOUD_DEST=G:\Mi unidad\Backups\ComisionesPF
+    set CLOUD_NOMBRE=Google Drive
+) else if exist "G:\My Drive" (
+    set CLOUD_DEST=G:\My Drive\Backups\ComisionesPF
+    set CLOUD_NOMBRE=Google Drive
+) else if exist "H:\Mi unidad" (
+    set CLOUD_DEST=H:\Mi unidad\Backups\ComisionesPF
     set CLOUD_NOMBRE=Google Drive
 ) else if exist "%USERPROFILE%\Dropbox" (
     set CLOUD_DEST=%USERPROFILE%\Dropbox\Backups\ComisionesPF
