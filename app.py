@@ -1569,6 +1569,66 @@ def debug_xubio_por_id(xubio_id: str, recurso: str = "comprobanteVentaBean"):
         return {"error": str(e)}
 
 
+@app.get("/api/debug/diagnostico-factura")
+def diagnostico_factura(numero: str):
+    """Diagnóstico: por qué una factura figura 'emitida' si ya tiene cobranza en Xubio.
+
+    Muestra lo que hay en la base, lo que Xubio responde para esa factura y si la
+    cobranza aparece en el listado de cobranzas (y cuántas trae ese listado).
+    """
+    with get_conn() as conn:
+        f = conn.execute(
+            "SELECT * FROM facturas WHERE numero LIKE ? ORDER BY id DESC LIMIT 1",
+            (f"%{numero}%",),
+        ).fetchone()
+    if not f:
+        return {"error": f"No hay ninguna factura con número parecido a '{numero}' en el sistema"}
+    f = dict(f)
+    out = {
+        "en_sistema": {k: f.get(k) for k in (
+            "numero", "estado", "fecha_emision", "fecha_cobro", "cliente_nombre",
+            "cliente_id_xubio", "xubio_id", "neto")},
+    }
+    xubio = get_xubio()
+
+    # 1) Qué dice Xubio de la factura en sí
+    try:
+        det = xubio._get(f"comprobanteVentaBean/{f['xubio_id']}")
+        items = det.get("transaccionCobranzaItems")
+        out["xubio_factura"] = {
+            "condicionDePago": det.get("condicionDePago"),
+            "transaccionCobranzaItems": items,
+            "cant_transaccionCobranzaItems": len(items) if isinstance(items, list) else items,
+            "campos_que_mencionan_cobranza": [k for k in det.keys() if "obranza" in k or "plicaci" in k],
+        }
+    except Exception as e:
+        out["xubio_factura"] = {"error": str(e)}
+
+    # 2) Qué trae el listado de cobranzas
+    try:
+        raw = xubio._get("cobranzaBean")
+        lista = raw if isinstance(raw, list) else raw.get("data", raw.get("cobranzas", []))
+        fechas = sorted(str(c.get("fecha", ""))[:10] for c in lista if c.get("fecha"))
+        mias = []
+        for c in lista:
+            cl = c.get("cliente") or {}
+            cid = str(cl.get("ID") or cl.get("id") or "") if isinstance(cl, dict) else ""
+            if cid and cid == str(f.get("cliente_id_xubio") or ""):
+                mias.append({"fecha": str(c.get("fecha", ""))[:10],
+                             "transaccionid": c.get("transaccionid"),
+                             "numeroRecibo": c.get("numeroRecibo")})
+        out["xubio_cobranzas"] = {
+            "tipo_respuesta": type(raw).__name__,
+            "campos_respuesta": list(raw.keys()) if isinstance(raw, dict) else None,
+            "total_en_listado": len(lista),
+            "fecha_mas_vieja": fechas[0] if fechas else None,
+            "fecha_mas_nueva": fechas[-1] if fechas else None,
+            "cobranzas_de_este_cliente": mias,
+        }
+    except Exception as e:
+        out["xubio_cobranzas"] = {"error": str(e)}
+    return out
+
 @app.get("/api/debug/xubio-endpoint")
 def debug_probar_endpoint(nombre: str, fecha_desde: str = None, fecha_hasta: str = None):
     """Try an arbitrary Xubio endpoint by name and return its raw response."""
