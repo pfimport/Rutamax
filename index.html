@@ -2077,6 +2077,9 @@ async function pollSyncEstado() {
         loadDashboard();
         const cobMsg = r.cobranzas_aplicadas ? ` · ${r.cobranzas_aplicadas} cobradas` : '';
         toast(`Sync OK · +${r.facturas_nuevas || 0} fact.${cobMsg} · ${r.vendedores_nuevos || 0} vendedores nuevos`);
+        if (r.aviso_cobranzas) {
+          toast('⚠ No se pudieron leer los pagos de Xubio (cobranzas). Algunas facturas cobradas pueden figurar como emitidas. Volvé a sincronizar.', 'err');
+        }
         const pendientes = await api('/pendientes');
         if (pendientes.length) {
           pendientesQueue = pendientes;

@@ -1350,6 +1350,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
             )
         except Exception as e:
             detalles.append(f"Warn cobranzas: {e}")
+            stats["aviso_cobranzas"] = str(e)
 
         conn.execute(
             """INSERT INTO sync_log (fecha, facturas_nuevas, facturas_actualizadas,

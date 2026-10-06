@@ -131,13 +131,13 @@ class XubioClient:
         expires_in = int(data.get("expires_in", 3600))
         self._token_expiry = datetime.now() + timedelta(seconds=expires_in - 60)
 
-    def _get(self, path: str, params: dict = None) -> dict:
+    def _get(self, path: str, params: dict = None, timeout: int = 20) -> dict:
         self._ensure_token()
         resp = requests.get(
             f"{API_BASE}/{path}",
             headers={"Authorization": f"Bearer {self._token}"},
             params=params,
-            timeout=20,
+            timeout=timeout,
         )
         resp.raise_for_status()
         return resp.json()
@@ -346,10 +346,18 @@ class XubioClient:
         With date params it returns 404 — so we fetch everything and filter in Python.
         For each cobranza we try cobranzaBean/{id} to find which invoice IDs it applies.
         """
-        try:
-            data = self._get("cobranzaBean")
-        except Exception as e:
-            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {e}")
+        # El listado completo de cobranzas crece con el tiempo y Xubio puede tardar
+        # más de 20 s en responderlo: damos hasta 120 s y reintentamos antes de fallar.
+        data = None
+        last_err = None
+        for _ in range(3):
+            try:
+                data = self._get("cobranzaBean", timeout=120)
+                break
+            except Exception as e:
+                last_err = e
+        if data is None:
+            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {last_err}")
 
         raw = data if isinstance(data, list) else data.get("data", data.get("cobranzas", []))
 
