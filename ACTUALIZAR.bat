@@ -8,11 +8,34 @@ echo    ACTUALIZAR SISTEMA DE COMISIONES PF
 echo  ============================================
 echo.
 echo  Esto descarga la ultima version y actualiza el programa.
+echo  Antes de actualizar hace un backup de tus datos y del programa.
 echo  Tus datos (comisiones.db) NO se tocan.
 echo.
 echo  IMPORTANTE: cerra el sistema (la ventana negra) antes de continuar.
 echo.
 pause
+
+echo.
+echo  [Backup] Guardando una copia de tus datos y del programa actual...
+if exist "%~dp0comisiones.db" (
+    call "%~dp0BACKUP.bat" silencioso
+    if errorlevel 1 (
+        echo.
+        echo  [ERROR] No se pudo hacer el backup de tus datos.
+        echo          Por seguridad NO se actualizo nada. Avisame antes de seguir.
+        echo.
+        pause
+        exit /b 1
+    )
+)
+set "HH=%time:~0,2%"
+set "HH=%HH: =0%"
+set "PROG=%~dp0backups\programa_%date:~6,4%%date:~3,2%%date:~0,2%_%HH%%time:~3,2%"
+mkdir "%PROG%" >nul 2>&1
+copy /Y "%~dp0*.py" "%PROG%\" >nul 2>&1
+copy /Y "%~dp0index.html" "%PROG%\" >nul 2>&1
+copy /Y "%~dp0requirements.txt" "%PROG%\" >nul 2>&1
+echo  [Backup] Listo. Quedo en la carpeta "backups".
 
 set "TMPZIP=%TEMP%\comisiones_update.zip"
 set "TMPDIR=%TEMP%\comisiones_update"
