@@ -400,9 +400,10 @@ def cobrar_lote(body: CobrarLoteRequest):
         raise HTTPException(400, "Sin facturas para cobrar")
     ph = ",".join("?" * len(ids))
     with get_conn() as conn:
+        _ensure_facturas_cols(conn)
         r = conn.execute(
             f"""UPDATE facturas SET estado='cobrada', fecha_cobro=?,
-                periodo_cobro_mes=?, periodo_cobro_anio=?
+                periodo_cobro_mes=?, periodo_cobro_anio=?, fecha_cobro_manual=1
                 WHERE id IN ({ph}) AND neto > 0 AND estado NOT IN ('cobrada','pagada')""",
             [body.fecha_cobro[:10], mes, anio, *ids],
         )
@@ -470,20 +471,33 @@ def exportar_facturas_csv(
     )
 
 
+def _ensure_facturas_cols(conn):
+    """Agrega la marca de 'fecha de cobro editada a mano' si la base todavía no la tiene."""
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(facturas)").fetchall()}
+    if "fecha_cobro_manual" not in cols:
+        conn.execute("ALTER TABLE facturas ADD COLUMN fecha_cobro_manual INTEGER DEFAULT 0")
+
+
 @app.post("/api/facturas/{fid}/cobrar")
 def marcar_cobrada(fid: int, body: MarcarCobradaRequest):
+    """Marca como cobrada o cambia la fecha de cobro de una factura.
+
+    La fecha elegida queda fija: la sincronización con Xubio no la pisa, y el mes
+    de esa fecha define en qué período cuenta para la comisión."""
     try:
         dt = datetime.fromisoformat(body.fecha_cobro[:10])
         mes, anio = dt.month, dt.year
     except Exception:
         raise HTTPException(400, "Fecha inválida, usar formato YYYY-MM-DD")
     with get_conn() as conn:
+        _ensure_facturas_cols(conn)
         row = conn.execute("SELECT id FROM facturas WHERE id = ?", (fid,)).fetchone()
         if not row:
             raise HTTPException(404, "Factura no encontrada")
         conn.execute(
             """UPDATE facturas
-               SET estado='cobrada', fecha_cobro=?, periodo_cobro_mes=?, periodo_cobro_anio=?
+               SET estado='cobrada', fecha_cobro=?, periodo_cobro_mes=?, periodo_cobro_anio=?,
+                   fecha_cobro_manual=1
                WHERE id=?""",
             (body.fecha_cobro[:10], mes, anio, fid),
         )
@@ -1176,6 +1190,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
     detalles = []
 
     with get_conn() as conn:
+        _ensure_facturas_cols(conn)
         # 1. Sync vendors
         try:
             vendedores_xubio = xubio.get_vendedores()
@@ -1238,7 +1253,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                         periodo_mes, periodo_anio = m, a
 
                     existing = conn.execute(
-                        "SELECT id, estado, fecha_cobro, periodo_cobro_mes, periodo_cobro_anio FROM facturas WHERE xubio_id = ?",
+                        "SELECT id, estado, fecha_cobro, periodo_cobro_mes, periodo_cobro_anio, fecha_cobro_manual FROM facturas WHERE xubio_id = ?",
                         (c["xubio_id"],)
                     ).fetchone()
                     if existing:
@@ -1246,7 +1261,13 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
                         # Never downgrade from cobrada/pagada to emitida:
                         # if the API now says 'cobrada', take that (Xubio registered a payment).
                         # if the API still says 'emitida' but we already marked it cobrada, keep it.
-                        if c["estado"] == "cobrada":
+                        # Si el usuario fijó la fecha de cobro a mano, Xubio no la pisa.
+                        if ex.get("fecha_cobro_manual"):
+                            est_final      = ex["estado"]
+                            fc_final       = ex["fecha_cobro"]
+                            mes_final      = ex["periodo_cobro_mes"]
+                            anio_final     = ex["periodo_cobro_anio"]
+                        elif c["estado"] == "cobrada":
                             est_final      = "cobrada"
                             fc_final       = c["fecha_cobro"] or ex["fecha_cobro"]
                             mes_final      = periodo_mes

@@ -508,7 +508,7 @@ input[type=checkbox]{width:auto;cursor:pointer}
 <!-- Modal Cobrar Factura -->
 <div class="modal-bg" id="modal-cobrar">
   <div class="modal" style="max-width:380px">
-    <h2>Marcar como Cobrada</h2>
+    <h2 id="cobrar-titulo">Marcar como Cobrada</h2>
     <input type="hidden" id="cobrar-fid"/>
     <div class="field" style="margin-top:16px">
       <label>Fecha de cobro</label>
@@ -516,6 +516,8 @@ input[type=checkbox]{width:auto;cursor:pointer}
     </div>
     <p style="color:var(--muted);font-size:12px;margin-top:8px">
       El mes de la fecha elegida define en qué período se cuenta para la comisión.
+      Esta fecha queda fija: Xubio no la va a cambiar en las próximas sincronizaciones.
+      Si ya habías guardado el resumen de ese mes, volvé a generarlo para que tome el cambio.
     </p>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-cobrar')">Cancelar</button>
@@ -1090,7 +1092,7 @@ async function loadFacturas() {
           <td>${f.numero||'—'}</td>
           <td>${tipoLabel}${esNC ? ' <span class="pill" style="background:#ef444422;color:var(--red);font-size:10px">NC</span>' : ''}</td>
           <td>${f.fecha_emision?.slice(0,10)||'—'}</td>
-          <td>${f.fecha_cobro?.slice(0,10)||'—'}</td>
+          <td>${f.fecha_cobro?.slice(0,10)||'—'}${f.fecha_cobro_manual ? ' <span title="Fecha de cobro editada a mano (la sincronización no la cambia)" style="color:var(--cyan)">✎</span>' : ''}</td>
           <td style="max-width:180px;overflow:hidden;text-overflow:ellipsis">${f.cliente_nombre||'—'}</td>
           <td class="fmt-currency" style="${netoStyle}">${fmt(f.neto)}</td>
           <td><span class="pill ${cobrada?'pill-green':'pill-yellow'}">${f.estado||'—'}</span></td>
@@ -1102,6 +1104,8 @@ async function loadFacturas() {
             </button>
             ${!cobrada && !esNC ? `<button class="btn btn-sm" style="background:#10b98133;color:var(--green);border:1px solid var(--green)" title="Marcar como cobrada"
               onclick="abrirCobrar(${f.id},'${(f.fecha_emision||'').slice(0,10)}')">✓ Cobrar</button>` : ''}
+            ${cobrada && !esNC ? `<button class="btn btn-secondary btn-sm" title="Cambiar la fecha de cobro"
+              onclick="abrirCobrar(${f.id},'${(f.fecha_emision||'').slice(0,10)}','${(f.fecha_cobro||'').slice(0,10)}')">📅 Fecha</button>` : ''}
           </td>
         </tr>`;
       }).join('')}
@@ -1124,11 +1128,12 @@ function openAsignarDesdeFactura(fid, clienteXubioId, clienteNombre) {
   openModal('modal-asignar');
 }
 
-function abrirCobrar(fid, fechaEmision) {
+function abrirCobrar(fid, fechaEmision, fechaCobroActual) {
   $('cobrar-fid').value = fid;
-  // Default to today or emission date if in same month
+  // Si ya está cobrada se edita su fecha; si no, se propone hoy
   const hoy = new Date().toISOString().slice(0,10);
-  $('cobrar-fecha').value = hoy;
+  $('cobrar-fecha').value = fechaCobroActual || hoy;
+  $('cobrar-titulo').textContent = fechaCobroActual ? 'Cambiar fecha de cobro' : 'Marcar como Cobrada';
   openModal('modal-cobrar');
 }
 
@@ -1140,7 +1145,7 @@ async function confirmarCobrar() {
     await api(`/facturas/${fid}/cobrar`, {
       method:'POST', body: JSON.stringify({fecha_cobro: fecha})
     });
-    toast('Factura marcada como cobrada');
+    toast('Fecha de cobro guardada');
     closeModal('modal-cobrar');
     loadFacturas();
     loadDashboard();

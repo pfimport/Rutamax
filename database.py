@@ -136,6 +136,7 @@ def init_db():
             "ALTER TABLE resumenes ADD COLUMN fecha_pago_comision TEXT",
             "ALTER TABLE resumenes ADD COLUMN fecha_corte TEXT",
             "ALTER TABLE resumenes ADD COLUMN adelantos_pagados REAL DEFAULT 0",
+            "ALTER TABLE facturas ADD COLUMN fecha_cobro_manual INTEGER DEFAULT 0",
         ]:
             try:
                 conn.execute(sql)
