@@ -36,9 +36,10 @@ if exist "%DEST%comisiones.db" (
         exit /b 1
     )
 )
-set "HH=%time:~0,2%"
-set "HH=%HH: =0%"
-set "PROG=%DEST%backups\programa_%date:~6,4%%date:~3,2%%date:~0,2%_%HH%%time:~3,2%"
+set "TS="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "TS=%%i"
+if not defined TS set "TS=%random%%random%"
+set "PROG=%DEST%backups\programa_%TS%"
 mkdir "%PROG%" >nul 2>&1
 copy /Y "%DEST%*.py" "%PROG%\" >nul 2>&1
 copy /Y "%DEST%index.html" "%PROG%\" >nul 2>&1

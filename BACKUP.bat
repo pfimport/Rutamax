@@ -27,19 +27,19 @@ if not exist "comisiones.db" (
 REM ── Crear carpeta backups local
 if not exist "backups" mkdir "backups"
 
-REM ── Nombre con fecha y hora
-set DIA=%date:~0,2%
-set MES=%date:~3,2%
-set ANIO=%date:~6,4%
-set HORA=%time:~0,2%
-set MIN=%time:~3,2%
-set HORA=%HORA: =0%
-set NOMBRE=comisiones_%ANIO%%MES%%DIA%_%HORA%%MIN%.db
+REM ── Nombre con fecha y hora (independiente del formato de fecha de Windows)
+set "TS="
+for /f "usebackq delims=" %%i in (`powershell -NoProfile -Command "Get-Date -Format yyyyMMdd_HHmmss"`) do set "TS=%%i"
+if not defined TS set "TS=%random%%random%"
+set "NOMBRE=comisiones_%TS%.db"
 
 REM ── Copia local
-copy /Y "comisiones.db" "backups\%NOMBRE%" >nul
-if %errorlevel% neq 0 (
-    if not "%MODO%"=="silencioso" echo  [ERROR] No se pudo crear el backup local.
+copy /Y "comisiones.db" "backups\%NOMBRE%" >nul 2>&1
+if not exist "backups\%NOMBRE%" (
+    if not "%MODO%"=="silencioso" (
+        echo  [ERROR] No se pudo crear el backup local.
+        pause
+    )
     exit /b 1
 )
 
@@ -73,9 +73,11 @@ if defined OneDrive (
     set CLOUD_NOMBRE=Dropbox
 )
 
+set "CLOUD_OK="
 if defined CLOUD_DEST (
     if not exist "%CLOUD_DEST%" mkdir "%CLOUD_DEST%" >nul 2>&1
     copy /Y "comisiones.db" "%CLOUD_DEST%\%NOMBRE%" >nul 2>&1
+    if exist "%CLOUD_DEST%\%NOMBRE%" set "CLOUD_OK=1"
 )
 
 REM ── Limpiar backups locales: conservar solo los ultimos 30
@@ -88,7 +90,8 @@ for /f "delims=" %%F in ('dir /b /o-d "backups\comisiones_*.db" 2^>nul') do (
 REM ── Mostrar resultado
 if not "%MODO%"=="silencioso" (
     echo  [OK] Backup creado: backups\%NOMBRE%
-    if defined CLOUD_NOMBRE echo  [OK] Copia en %CLOUD_NOMBRE%: %CLOUD_DEST%\%NOMBRE%
+    if defined CLOUD_OK echo  [OK] Copia en %CLOUD_NOMBRE%: %CLOUD_DEST%\%NOMBRE%
+    if defined CLOUD_DEST if not defined CLOUD_OK echo  [!] No se pudo copiar a %CLOUD_NOMBRE%. El backup local si quedo.
     if not defined CLOUD_NOMBRE (
         echo.
         echo  Consejo: si installas OneDrive o Google Drive, los backups
