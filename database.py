@@ -14,7 +14,9 @@ DEFAULT_ESCALA = [
 
 
 def get_conn():
-    conn = sqlite3.connect(str(DB_PATH))
+    # timeout=30: si otro proceso está escribiendo, esperar hasta 30 s antes de
+    # fallar con "database is locked" (el valor por defecto es solo 5 s).
+    conn = sqlite3.connect(str(DB_PATH), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
     return conn

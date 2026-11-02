@@ -1220,6 +1220,9 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
 
             page = 1
             while True:
+                # Guardar lo hecho hasta acá: así la base NO queda bloqueada mientras
+                # esperamos la respuesta (lenta) de Xubio y se puede seguir usando el sistema.
+                conn.commit()
                 try:
                     resp = xubio.get_comprobantes(fecha_desde, fecha_hasta, page)
                 except Exception as e:
@@ -1330,6 +1333,7 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
             global_fd = f"{a0}-{m0:02d}-01"
             global_fh = now.date().isoformat()
 
+            conn.commit()  # no retener el bloqueo de la base mientras Xubio responde
             cob_resp = xubio.get_cobranzas(fecha_desde=global_fd, fecha_hasta=global_fh)
             for cob in cob_resp["items"]:
                 fecha_cobro = cob["fecha"]
