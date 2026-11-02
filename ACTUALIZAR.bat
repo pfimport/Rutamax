@@ -1,5 +1,13 @@
 @echo off
-cd /d "%~dp0"
+REM -- Este script se ejecuta desde una COPIA en la carpeta temporal.
+REM -- Asi no se pisa a si mismo cuando mas abajo copia los archivos nuevos
+REM -- (si el archivo cambia mientras Windows lo esta leyendo, se rompe).
+if /i "%~1"=="__copia" goto seguir
+copy /Y "%~f0" "%TEMP%\actualizar_comisiones.bat" >nul
+call "%TEMP%\actualizar_comisiones.bat" __copia "%~dp0" & exit /b
+:seguir
+set "DEST=%~2"
+cd /d "%DEST%"
 title Actualizar - Sistema de Comisiones PF
 color 0E
 echo.
@@ -17,8 +25,8 @@ pause
 
 echo.
 echo  [Backup] Guardando una copia de tus datos y del programa actual...
-if exist "%~dp0comisiones.db" (
-    call "%~dp0BACKUP.bat" silencioso
+if exist "%DEST%comisiones.db" (
+    call "%DEST%BACKUP.bat" silencioso
     if errorlevel 1 (
         echo.
         echo  [ERROR] No se pudo hacer el backup de tus datos.
@@ -30,11 +38,11 @@ if exist "%~dp0comisiones.db" (
 )
 set "HH=%time:~0,2%"
 set "HH=%HH: =0%"
-set "PROG=%~dp0backups\programa_%date:~6,4%%date:~3,2%%date:~0,2%_%HH%%time:~3,2%"
+set "PROG=%DEST%backups\programa_%date:~6,4%%date:~3,2%%date:~0,2%_%HH%%time:~3,2%"
 mkdir "%PROG%" >nul 2>&1
-copy /Y "%~dp0*.py" "%PROG%\" >nul 2>&1
-copy /Y "%~dp0index.html" "%PROG%\" >nul 2>&1
-copy /Y "%~dp0requirements.txt" "%PROG%\" >nul 2>&1
+copy /Y "%DEST%*.py" "%PROG%\" >nul 2>&1
+copy /Y "%DEST%index.html" "%PROG%\" >nul 2>&1
+copy /Y "%DEST%requirements.txt" "%PROG%\" >nul 2>&1
 echo  [Backup] Listo. Quedo en la carpeta "backups".
 
 set "TMPZIP=%TEMP%\comisiones_update.zip"
@@ -70,13 +78,13 @@ if not defined SRCDIR (
     pause
     exit /b 1
 )
-xcopy /Y /E "%SRCDIR%\*" "%~dp0" >nul
+xcopy /Y /E "%SRCDIR%\*" "%DEST%" >nul
 
 echo  [4/6] Instalando componentes nuevos (puede tardar un momento)...
-python -m pip install -r "%~dp0requirements.txt" -q >nul 2>&1
+python -m pip install -r "%DEST%requirements.txt" -q >nul 2>&1
 
 echo  [5/6] Borrando cache vieja...
-if exist "%~dp0__pycache__" rmdir /s /q "%~dp0__pycache__" >nul 2>&1
+if exist "%DEST%__pycache__" rmdir /s /q "%DEST%__pycache__" >nul 2>&1
 
 echo  [6/6] Apagando el sistema viejo (para que cargue el codigo nuevo)...
 for /f "tokens=5" %%a in ('netstat -aon 2^>nul ^| findstr ":8000 "') do (
