@@ -766,13 +766,13 @@ async function api(path, opts={}) {
   return r.json();
 }
 
-function toast(msg, type='ok') {
+function toast(msg, type='ok', ms=4000) {
   const c = $('toasts');
   const t = document.createElement('div');
   t.className = 'toast ' + type;
   t.textContent = msg;
   c.appendChild(t);
-  setTimeout(() => t.remove(), 4000);
+  setTimeout(() => t.remove(), ms);
 }
 
 function openModal(id) { $(id).classList.add('open'); }
@@ -2083,7 +2083,7 @@ async function pollSyncEstado() {
         const cobMsg = r.cobranzas_aplicadas ? ` · ${r.cobranzas_aplicadas} cobradas` : '';
         toast(`Sync OK · +${r.facturas_nuevas || 0} fact.${cobMsg} · ${r.vendedores_nuevos || 0} vendedores nuevos`);
         if (r.aviso_cobranzas) {
-          toast('⚠ No se pudieron leer los pagos de Xubio (cobranzas). Algunas facturas cobradas pueden figurar como emitidas. Volvé a sincronizar.', 'err');
+          toast('⚠ No se pudieron leer los pagos de Xubio (cobranzas). Algunas facturas cobradas pueden figurar como emitidas. Detalle: ' + String(r.aviso_cobranzas).slice(0, 160), 'err', 20000);
         }
         const pendientes = await api('/pendientes');
         if (pendientes.length) {

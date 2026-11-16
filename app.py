@@ -1655,6 +1655,47 @@ def diagnostico_factura(numero: str):
         out["xubio_cobranzas"] = {"error": str(e)}
     return out
 
+
+@app.get("/api/debug/cobranzas-lectura")
+def diagnostico_lectura_cobranzas():
+    """Mide cómo responde Xubio al listado de cobranzas (tiempo, cantidad, paginación).
+
+    Puede tardar varios minutos si Xubio está lento. Sirve para decidir cómo leer
+    los pagos sin que la consulta se corte."""
+    import time as _time
+    xubio = get_xubio()
+
+    def _resumen(raw):
+        lista = raw if isinstance(raw, list) else raw.get("data", raw.get("cobranzas", []))
+        fechas = [str(c.get("fecha", ""))[:10] for c in lista if isinstance(c, dict) and c.get("fecha")]
+        ids = [str(c.get("transaccionid", "")) for c in lista if isinstance(c, dict)]
+        return {
+            "tipo_respuesta": type(raw).__name__,
+            "campos_respuesta": list(raw.keys()) if isinstance(raw, dict) else None,
+            "cantidad": len(lista),
+            "primera_fecha": fechas[0] if fechas else None,
+            "ultima_fecha": fechas[-1] if fechas else None,
+            "fecha_mas_nueva": max(fechas) if fechas else None,
+            "primer_id": ids[0] if ids else None,
+            "ultimo_id": ids[-1] if ids else None,
+        }
+
+    def _medir(nombre, params, timeout):
+        t0 = _time.time()
+        try:
+            raw = xubio._get("cobranzaBean", params, timeout=timeout)
+            r = _resumen(raw)
+            r["segundos"] = round(_time.time() - t0, 1)
+            return r
+        except Exception as e:
+            return {"error": str(e)[:300], "segundos": round(_time.time() - t0, 1)}
+
+    return {
+        "1_listado_completo": _medir("completo", None, 150),
+        "2_pagina_1_de_50": _medir("p1", {"pagina": 1, "pageSize": 50}, 60),
+        "3_pagina_2_de_50": _medir("p2", {"pagina": 2, "pageSize": 50}, 60),
+    }
+
 @app.get("/api/debug/xubio-endpoint")
 def debug_probar_endpoint(nombre: str, fecha_desde: str = None, fecha_hasta: str = None):
     """Try an arbitrary Xubio endpoint by name and return its raw response."""
