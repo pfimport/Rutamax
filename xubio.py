@@ -339,6 +339,41 @@ class XubioClient:
 
     # ── Cobranzas ────────────────────────────────────────────────────────────
 
+    def _get_cobranzas_paginado(self, tam: int = 50, max_paginas: int = 40) -> list:
+        """Lee cobranzaBean por páginas (pagina/pageSize) y devuelve la lista unida.
+
+        Se detiene al recibir una página vacía, incompleta o repetida (por si Xubio
+        ignora la paginación y devuelve siempre lo mismo)."""
+        todas, vistos = [], set()
+        for pagina in range(1, max_paginas + 1):
+            lote, ultimo_error = None, None
+            for _ in range(2):
+                try:
+                    lote = self._get("cobranzaBean", {"pagina": pagina, "pageSize": tam}, timeout=60)
+                    break
+                except Exception as e:
+                    ultimo_error = e
+            if lote is None:
+                # Si ya juntamos algo y falla una página, mejor avisar que devolver incompleto
+                raise RuntimeError(f"falló la página {pagina}: {ultimo_error}")
+            if isinstance(lote, dict):
+                lote = lote.get("data", lote.get("cobranzas", []))
+            if not lote:
+                break
+            nuevos = 0
+            for c in lote:
+                cid = str(c.get("transaccionid", "")) if isinstance(c, dict) else ""
+                if cid and cid in vistos:
+                    continue
+                vistos.add(cid)
+                todas.append(c)
+                nuevos += 1
+            if nuevos == 0 or len(lote) < tam:
+                break
+        if not todas:
+            raise RuntimeError("Xubio no devolvió cobranzas por páginas")
+        return todas
+
     def get_cobranzas(self, fecha_desde: str = None, fecha_hasta: str = None) -> dict:
         """Fetch cobranzas from Xubio.
 
@@ -357,7 +392,15 @@ class XubioClient:
             except Exception as e:
                 last_err = e
         if data is None:
-            raise RuntimeError(f"No se pudo obtener cobranzas de Xubio: {last_err}")
+            # Plan B: pedir el listado de a partes chicas (si Xubio lo permite), así
+            # cada pedido responde rápido y no se corta por tiempo.
+            try:
+                data = self._get_cobranzas_paginado()
+            except Exception as e2:
+                raise RuntimeError(
+                    f"No se pudo obtener cobranzas de Xubio: {last_err} "
+                    f"(tampoco por partes: {e2})"
+                )
 
         raw = data if isinstance(data, list) else data.get("data", data.get("cobranzas", []))
 
