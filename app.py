@@ -1189,6 +1189,9 @@ def _do_sync(xubio: XubioClient, meses_atras: int = 3):
              "vendedores_nuevos": 0, "clientes_nuevos": 0, "cobranzas_aplicadas": 0}
     detalles = []
 
+    # Si Xubio rechaza el acceso, avisar YA como error (antes la sync decía "OK" sin leer nada)
+    xubio._ensure_token()
+
     with get_conn() as conn:
         _ensure_facturas_cols(conn)
         # 1. Sync vendors

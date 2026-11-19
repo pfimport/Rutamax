@@ -125,7 +125,12 @@ class XubioClient:
             "client_id": self.client_id,
             "secret_id": self.client_secret,
         }, timeout=15)
-        resp.raise_for_status()
+        if resp.status_code >= 400:
+            detalle = (resp.text or "").strip().replace("\n", " ")[:200]
+            raise RuntimeError(
+                f"Xubio rechazó el acceso (error {resp.status_code}). "
+                f"Revisá el Client ID y el Secret ID en Configuración. Respuesta de Xubio: {detalle}"
+            )
         data = resp.json()
         self._token = data["access_token"]
         expires_in = int(data.get("expires_in", 3600))
